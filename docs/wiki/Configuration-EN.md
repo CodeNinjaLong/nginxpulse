@@ -175,7 +175,7 @@ Common fields:
   "host": "10.0.0.10",
   "port": 22,
   "user": "nginx",
-  "auth": { "keyFile": "/path/to/id_rsa", "password": "" },
+  "auth": { "keyFile": "/path/to/id_rsa", "passphrase": "", "password": "" },
   "path": "/var/log/nginx/access.log",
   "pattern": "",
   "compression": "auto"
@@ -239,6 +239,37 @@ Common fields:
   "type": "agent"
 }
 ```
+
+#### Complete `sources` example (SFTP key-based pull)
+You can place this directly inside one `websites[]` item:
+```json
+{
+  "name": "Main Site",
+  "domains": ["example.com", "www.example.com"],
+  "sources": [
+    {
+      "id": "sftp-main",
+      "type": "sftp",
+      "mode": "poll",
+      "host": "192.168.6.131",
+      "port": 22,
+      "user": "root",
+      "auth": {
+        "keyFile": "/home/nginxpulse/.ssh/nginxpulse_sftp",
+        "passphrase": "",
+        "password": ""
+      },
+      "path": "/var/log/nginx/access.log",
+      "pattern": "/var/log/nginx/access-*.log.gz",
+      "pollInterval": "5s",
+      "compression": "auto"
+    }
+  ]
+}
+```
+Notes:
+- `auth.keyFile` must be an absolute path accessible on the machine (or container) running NginxPulse.
+- If the private key is encrypted, fill `auth.passphrase`; otherwise keep it empty.
 
 ### system
 - `logDestination`: `file` or `stdout`.

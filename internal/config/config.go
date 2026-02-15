@@ -67,8 +67,9 @@ type SourceConfig struct {
 }
 
 type SourceAuth struct {
-	KeyFile  string `json:"keyFile,omitempty"`
-	Password string `json:"password,omitempty"`
+	KeyFile    string `json:"keyFile,omitempty"`
+	Password   string `json:"password,omitempty"`
+	Passphrase string `json:"passphrase,omitempty"`
 }
 
 type HTTPIndexConfig struct {

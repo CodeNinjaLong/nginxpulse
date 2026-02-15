@@ -14,9 +14,11 @@ func NewFromConfig(websiteID string, cfg config.SourceConfig) (LogSource, error)
 	case string(SourceSFTP):
 		keyFile := ""
 		password := ""
+		passphrase := ""
 		if cfg.Auth != nil {
 			keyFile = cfg.Auth.KeyFile
 			password = cfg.Auth.Password
+			passphrase = cfg.Auth.Passphrase
 		}
 		return NewSFTPSource(
 			websiteID,
@@ -26,6 +28,7 @@ func NewFromConfig(websiteID string, cfg config.SourceConfig) (LogSource, error)
 			cfg.User,
 			keyFile,
 			password,
+			passphrase,
 			cfg.Path,
 			cfg.Pattern,
 			cfg.Compression,

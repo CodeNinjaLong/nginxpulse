@@ -305,9 +305,9 @@ func (r *Repository) backfillSessions(websiteID string) error {
 
 	if _, err = tx.Exec(fmt.Sprintf(
 		`INSERT INTO "%s" (ip_id, ua_id, session_id, last_ts)
-         SELECT ip_id, ua_id, id, end_ts
+         SELECT DISTINCT ON (ip_id, ua_id) ip_id, ua_id, id, end_ts
          FROM "%s"
-         ORDER BY end_ts
+         ORDER BY ip_id, ua_id, end_ts DESC, id DESC
          ON CONFLICT(ip_id, ua_id) DO UPDATE SET
              session_id = excluded.session_id,
              last_ts = excluded.last_ts`,
@@ -453,9 +453,9 @@ func (r *Repository) cleanupSessions(websiteID string, cutoff time.Time) error {
 	}
 	if _, err := r.db.Exec(fmt.Sprintf(
 		`INSERT INTO "%s" (ip_id, ua_id, session_id, last_ts)
-         SELECT ip_id, ua_id, id, end_ts
+         SELECT DISTINCT ON (ip_id, ua_id) ip_id, ua_id, id, end_ts
          FROM "%s"
-         ORDER BY end_ts
+         ORDER BY ip_id, ua_id, end_ts DESC, id DESC
          ON CONFLICT(ip_id, ua_id) DO UPDATE SET
              session_id = excluded.session_id,
              last_ts = excluded.last_ts`,

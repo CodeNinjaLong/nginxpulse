@@ -216,13 +216,71 @@ location /logs/ {
   "host": "1.2.3.4",
   "port": 22,
   "user": "nginx",
-  "auth": { "keyFile": "/secrets/id_rsa" },
+  "auth": { "keyFile": "/secrets/id_rsa", "passphrase": "", "password": "" },
   "path": "/var/log/nginx/access.log",
   "pattern": "/var/log/nginx/access-*.log.gz",
   "pollInterval": "5s"
 }
 ```
-> `auth` 支持 `keyFile` 和 `password` 两种方式。
+> `auth` 支持 `keyFile`、`passphrase`（私钥口令）和 `password`。
+
+#### SFTP 密钥登录实操（本机 -> 远端）
+1) 在本机生成专用密钥（推荐 `ed25519`）：
+```bash
+ssh-keygen -t ed25519 -a 100 -f ~/.ssh/nginxpulse_sftp -C "nginxpulse-sftp"
+```
+
+2) 将公钥写入远端用户（需要先能用密码或已有方式登录）：
+```bash
+ssh-copy-id -i ~/.ssh/nginxpulse_sftp.pub <user>@<host>
+```
+若没有 `ssh-copy-id`，可手动执行：
+```bash
+cat ~/.ssh/nginxpulse_sftp.pub | ssh <user>@<host> \
+'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+```
+
+3) 在远端确认权限（以当前登录用户为例）：
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+```
+
+4) 在本机验证 SSH 密钥登录（强制只走公钥认证）：
+```bash
+ssh -i ~/.ssh/nginxpulse_sftp -o PreferredAuthentications=publickey <user>@<host>
+```
+
+5) 在本机验证 SFTP 密钥登录：
+```bash
+sftp -i ~/.ssh/nginxpulse_sftp <user>@<host>
+```
+
+6) 验证通过后，再填入 `sources`：
+```json
+{
+  "id": "sftp-main",
+  "type": "sftp",
+  "host": "<host>",
+  "port": 22,
+  "user": "<user>",
+  "auth": {
+    "keyFile": "/absolute/path/to/nginxpulse_sftp",
+    "passphrase": ""
+  },
+  "path": "/var/log/nginx/access.log"
+}
+```
+> `keyFile` 路径必须是运行 NginxPulse 的机器（或容器）内可访问的绝对路径。
+
+7) 若仍失败，建议先用调试日志定位：
+```bash
+ssh -vvv -i ~/.ssh/nginxpulse_sftp -o PreferredAuthentications=publickey <user>@<host>
+```
+Alpine 常见日志查看：
+```bash
+grep sshd /var/log/messages | tail -n 80
+```
 
 ### 方案三：对象存储（S3/OSS）
 适合日志统一归档到 OSS/S3（支持阿里云/腾讯云/AWS 兼容端点）。

@@ -171,7 +171,7 @@ https://example.com/m/?tabbarBottom=false
 ```
 
 #### sftp 源示例
-字段要点：`host`、`user` 必填；`auth` 支持 `keyFile` 或 `password`；`path` 或 `pattern` 二选一。
+字段要点：`host`、`user` 必填；`auth` 支持 `keyFile`、`passphrase`（私钥口令）或 `password`；`path` 或 `pattern` 二选一。
 ```json
 {
   "id": "sftp-main",
@@ -179,7 +179,7 @@ https://example.com/m/?tabbarBottom=false
   "host": "10.0.0.10",
   "port": 22,
   "user": "nginx",
-  "auth": { "keyFile": "/path/to/id_rsa", "password": "" },
+  "auth": { "keyFile": "/path/to/id_rsa", "passphrase": "", "password": "" },
   "path": "/var/log/nginx/access.log",
   "pattern": "",
   "compression": "auto"
@@ -247,6 +247,37 @@ https://example.com/m/?tabbarBottom=false
   "type": "agent"
 }
 ```
+
+#### 完整 `sources` 示例（SFTP 密钥拉取）
+可直接放到 `websites[]` 项中使用：
+```json
+{
+  "name": "主站",
+  "domains": ["example.com", "www.example.com"],
+  "sources": [
+    {
+      "id": "sftp-main",
+      "type": "sftp",
+      "mode": "poll",
+      "host": "192.168.6.131",
+      "port": 22,
+      "user": "root",
+      "auth": {
+        "keyFile": "/home/nginxpulse/.ssh/nginxpulse_sftp",
+        "passphrase": "",
+        "password": ""
+      },
+      "path": "/var/log/nginx/access.log",
+      "pattern": "/var/log/nginx/access-*.log.gz",
+      "pollInterval": "5s",
+      "compression": "auto"
+    }
+  ]
+}
+```
+说明：
+- `auth.keyFile` 必须是运行 NginxPulse 的机器（或容器）内可访问的绝对路径。
+- 私钥有口令时填写 `auth.passphrase`；无口令可留空。
 
 ### system 系统配置
 - `logDestination`: `file` 或 `stdout`，默认 `file`。

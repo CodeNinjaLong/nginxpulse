@@ -214,13 +214,71 @@ Ideal when SSH/SFTP access is available, no extra HTTP service needed.
   "host": "1.2.3.4",
   "port": 22,
   "user": "nginx",
-  "auth": { "keyFile": "/secrets/id_rsa" },
+  "auth": { "keyFile": "/secrets/id_rsa", "passphrase": "", "password": "" },
   "path": "/var/log/nginx/access.log",
   "pattern": "/var/log/nginx/access-*.log.gz",
   "pollInterval": "5s"
 }
 ```
-> `auth` supports `keyFile` and `password`.
+> `auth` supports `keyFile`, `passphrase` (private key passphrase), and `password`.
+
+#### SFTP key-based login walkthrough (local -> remote)
+1) Generate a dedicated key pair on your local machine (recommended: `ed25519`):
+```bash
+ssh-keygen -t ed25519 -a 100 -f ~/.ssh/nginxpulse_sftp -C "nginxpulse-sftp"
+```
+
+2) Install the public key on the remote user:
+```bash
+ssh-copy-id -i ~/.ssh/nginxpulse_sftp.pub <user>@<host>
+```
+If `ssh-copy-id` is unavailable:
+```bash
+cat ~/.ssh/nginxpulse_sftp.pub | ssh <user>@<host> \
+'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+```
+
+3) Ensure remote permissions are correct:
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+```
+
+4) Verify SSH key login from local (public key only):
+```bash
+ssh -i ~/.ssh/nginxpulse_sftp -o PreferredAuthentications=publickey <user>@<host>
+```
+
+5) Verify SFTP key login:
+```bash
+sftp -i ~/.ssh/nginxpulse_sftp <user>@<host>
+```
+
+6) After verification, configure `sources`:
+```json
+{
+  "id": "sftp-main",
+  "type": "sftp",
+  "host": "<host>",
+  "port": 22,
+  "user": "<user>",
+  "auth": {
+    "keyFile": "/absolute/path/to/nginxpulse_sftp",
+    "passphrase": ""
+  },
+  "path": "/var/log/nginx/access.log"
+}
+```
+> `keyFile` must be an absolute path accessible on the machine (or container) running NginxPulse.
+
+7) If login still fails, use verbose SSH output first:
+```bash
+ssh -vvv -i ~/.ssh/nginxpulse_sftp -o PreferredAuthentications=publickey <user>@<host>
+```
+On Alpine, a common SSH log check is:
+```bash
+grep sshd /var/log/messages | tail -n 80
+```
 
 ### Option 3: Object Storage (S3/OSS)
 Best when logs are archived to OSS/S3 (Aliyun/Tencent/AWS compatible endpoints).

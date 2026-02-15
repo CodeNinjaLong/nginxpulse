@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,12 +23,13 @@ type SFTPSource struct {
 	user        string
 	keyFile     string
 	password    string
+	passphrase  string
 	path        string
 	pattern     string
 	compression string
 }
 
-func NewSFTPSource(websiteID, id, host string, port int, user, keyFile, password, pathValue, pattern, compression string) *SFTPSource {
+func NewSFTPSource(websiteID, id, host string, port int, user, keyFile, password, passphrase, pathValue, pattern, compression string) *SFTPSource {
 	return &SFTPSource{
 		websiteID:   websiteID,
 		id:          id,
@@ -36,6 +38,7 @@ func NewSFTPSource(websiteID, id, host string, port int, user, keyFile, password
 		user:        user,
 		keyFile:     keyFile,
 		password:    password,
+		passphrase:  passphrase,
 		path:        pathValue,
 		pattern:     pattern,
 		compression: compression,
@@ -165,24 +168,21 @@ func (s *SFTPSource) Stat(ctx context.Context, target TargetRef) (TargetMeta, er
 }
 
 func (s *SFTPSource) connect(ctx context.Context) (*sftp.Client, *ssh.Client, error) {
+	_ = ctx
 	if s.port == 0 {
 		s.port = 22
 	}
 
 	auths := []ssh.AuthMethod{}
-	if strings.TrimSpace(s.password) != "" {
-		auths = append(auths, ssh.Password(s.password))
-	}
 	if strings.TrimSpace(s.keyFile) != "" {
-		key, err := os.ReadFile(s.keyFile)
-		if err != nil {
-			return nil, nil, err
-		}
-		signer, err := ssh.ParsePrivateKey(key)
+		signer, err := loadPrivateKeySigner(s.keyFile, s.keyPassphrase())
 		if err != nil {
 			return nil, nil, err
 		}
 		auths = append(auths, ssh.PublicKeys(signer))
+	}
+	if strings.TrimSpace(s.password) != "" {
+		auths = append(auths, ssh.Password(s.password))
 	}
 	if len(auths) == 0 {
 		return nil, nil, fmt.Errorf("sftp auth missing")
@@ -207,6 +207,57 @@ func (s *SFTPSource) connect(ctx context.Context) (*sftp.Client, *ssh.Client, er
 	}
 
 	return client, sshClient, nil
+}
+
+func (s *SFTPSource) keyPassphrase() string {
+	if strings.TrimSpace(s.passphrase) != "" {
+		return s.passphrase
+	}
+	// Backward compatibility: historical configs only had auth.password.
+	return s.password
+}
+
+func loadPrivateKeySigner(keyFile, passphrase string) (ssh.Signer, error) {
+	resolved := resolveKeyFilePath(keyFile)
+	key, err := os.ReadFile(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("read sftp key file %s: %w", resolved, err)
+	}
+
+	signer, err := parsePrivateKeySigner(key, passphrase)
+	if err != nil {
+		return nil, fmt.Errorf("parse sftp key file %s: %w", resolved, err)
+	}
+	return signer, nil
+}
+
+func parsePrivateKeySigner(key []byte, passphrase string) (ssh.Signer, error) {
+	signer, err := ssh.ParsePrivateKey(key)
+	if err == nil {
+		return signer, nil
+	}
+	if strings.TrimSpace(passphrase) == "" {
+		return nil, err
+	}
+
+	signer, passErr := ssh.ParsePrivateKeyWithPassphrase(key, []byte(passphrase))
+	if passErr == nil {
+		return signer, nil
+	}
+	return nil, fmt.Errorf("private key parse failed: %v; with passphrase failed: %w", err, passErr)
+}
+
+func resolveKeyFilePath(keyFile string) string {
+	value := os.ExpandEnv(strings.TrimSpace(keyFile))
+	home, err := os.UserHomeDir()
+	if err == nil {
+		if value == "~" {
+			value = home
+		} else if strings.HasPrefix(value, "~/") {
+			value = filepath.Join(home, strings.TrimPrefix(value, "~/"))
+		}
+	}
+	return value
 }
 
 type multiCloser []io.Closer
