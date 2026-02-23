@@ -52,6 +52,8 @@ func buildRouter(statsFactory *analytics.StatsFactory, logParser *ingest.LogPars
 	}))
 	router.Use(accessKeyMiddleware())
 
+	router.GET("/healthz", gin.WrapF(HealthHandler))
+
 	web.SetupRoutes(router, statsFactory, logParser)
 	attachWebUI(router)
 
