@@ -12,6 +12,12 @@ Lightweight Nginx access log analytics and visualization dashboard with realtime
 
 Source repository: https://github.com/likaia/nginxpulse
 
+## Documentation Site (Recommended)
+
+> **Online docs: <https://nginx-pulse-docs.kaisir.cn/>**
+>
+> Wiki is still available (historical references): https://github.com/likaia/nginxpulse/wiki
+
 > ⚠️ Note: This document focuses on quick usage. For detailed docs and example configs, see the Wiki: https://github.com/likaia/nginxpulse/wiki
 
 ![demo-img-1.png](https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/demo-img-1.png)

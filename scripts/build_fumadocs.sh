@@ -57,6 +57,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
+
 if [[ ! -d "$DOCS_DIR" ]]; then
   echo "Fumadocs directory not found: $DOCS_DIR" >&2
   exit 1
