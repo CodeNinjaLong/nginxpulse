@@ -26,6 +26,10 @@ func (p *LogParser) notifySystem(
 	}
 	if _, err := p.repo.CreateSystemNotification(entry); err != nil {
 		logrus.WithError(err).Warn("写入系统通知失败")
+		return
+	}
+	if p.alertDispatcher != nil {
+		go p.alertDispatcher.Send(entry)
 	}
 }
 

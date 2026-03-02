@@ -12,6 +12,7 @@ import type {
   LogsExportStatusResponse,
   LogsExportListResponse,
   IPGeoAPIFailureListResponse,
+  AlertPushTestResponse,
   RefererIPBatchStats,
   SimpleSeriesStats,
   SystemNotificationListResponse,
@@ -64,6 +65,15 @@ export const saveConfig = async (config: ConfigPayload): Promise<ConfigSaveRespo
 
 export const restartSystem = async (): Promise<{ success: boolean }> => {
   const response = await client.post<ApiResponse<{ success: boolean }>>('api/system/restart');
+  return response.data;
+};
+
+export const testAlertPush = async (payload: {
+  alertPush?: Record<string, any>;
+  message?: string;
+  channels?: string[];
+}): Promise<AlertPushTestResponse> => {
+  const response = await client.post<ApiResponse<AlertPushTestResponse>>('api/alert-push/test', payload);
   return response.data;
 };
 

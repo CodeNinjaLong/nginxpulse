@@ -59,6 +59,7 @@ export interface SystemConfig {
   logRetentionDays?: number;
   parseBatchSize?: number;
   ipGeoCacheLimit?: number;
+  alertPush?: Record<string, any>;
   demoMode?: boolean;
   accessKeys?: string[];
   accessKeyExpireDays?: number;
@@ -231,6 +232,19 @@ export interface SystemNotificationListResponse {
   notifications: SystemNotification[];
   has_more?: boolean;
   unread_count?: number;
+}
+
+export interface AlertPushChannelResult {
+  enabled?: boolean;
+  success: boolean;
+  error?: string;
+}
+
+export interface AlertPushTestResponse {
+  success: boolean;
+  tested: number;
+  succeeded: number;
+  results: Record<string, AlertPushChannelResult>;
 }
 
 export type ApiResponse<T> = T;

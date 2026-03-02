@@ -290,6 +290,29 @@ https://example.com/m/?tabbarBottom=false
 - `parseBatchSize`: 单批解析条数，默认 100。
 - `ipGeoCacheLimit`: IP 缓存上限，默认 1000000。
 - `ipGeoApiUrl`: IP 归属地远端 API 地址，默认 `http://ip-api.com/batch`。注意：自定义 API 必须严格遵循《IP 归属地解析》文档中的协议定义。
+- `alertPush`: 系统通知外部推送配置（飞书/钉钉/企微机器人/邮件）。
+  - 修改后需重启服务生效。
+  - 可在「系统配置 -> 高级」中填写 JSON。
+  - 示例：
+```json
+{
+  "enabled": true,
+  "timeout": "5s",
+  "feishu": { "enabled": true, "webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/xxx" },
+  "dingtalk": { "enabled": false, "webhook": "", "secret": "" },
+  "wecom": { "enabled": false, "webhook": "" },
+  "email": {
+    "enabled": false,
+    "host": "smtp.example.com",
+    "port": 465,
+    "username": "alert@example.com",
+    "password": "password",
+    "from": "alert@example.com",
+    "to": ["ops@example.com"],
+    "useTLS": true
+  }
+}
+```
 - `demoMode`: 是否演示模式，默认 `false`。
 - `accessKeys`: 访问密钥列表，默认空。
 - `language`: `zh-CN` 或 `en-US`，默认 `zh-CN`。

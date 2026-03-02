@@ -226,21 +226,18 @@ func (p *LogParser) ProcessPendingIPGeo(limit int) int {
 						break
 					}
 				}
-				_, err := p.repo.CreateSystemNotification(store.SystemNotification{
-					Level:       "warning",
-					Category:    "ip_geo",
-					Title:       "IP 归属地查询失败",
-					Message:     fmt.Sprintf("远端 IP 归属地查询失败，已记录 %d 个 IP。", len(failureRecords)),
-					Fingerprint: "ip_geo_api_failure",
-					Metadata: map[string]interface{}{
+				p.notifySystem(
+					"warning",
+					"ip_geo",
+					"IP 归属地查询失败",
+					fmt.Sprintf("远端 IP 归属地查询失败，已记录 %d 个 IP。", len(failureRecords)),
+					"ip_geo_api_failure",
+					map[string]interface{}{
 						"count":   len(failureRecords),
 						"samples": samples,
 						"error":   detail,
 					},
-				})
-				if err != nil {
-					logrus.WithError(err).Warn("写入系统通知失败")
-				}
+				)
 			}
 		}
 	} else {

@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/likaia/nginxpulse/internal/alertpush"
 	"github.com/likaia/nginxpulse/internal/analytics"
 	"github.com/likaia/nginxpulse/internal/config"
 	"github.com/likaia/nginxpulse/internal/ingest"
+	"github.com/likaia/nginxpulse/internal/store"
 	"github.com/likaia/nginxpulse/internal/version"
 	"github.com/sirupsen/logrus"
 )
@@ -285,6 +287,72 @@ func SetupRoutes(
 				_ = proc.Signal(syscall.SIGTERM)
 			}
 		}()
+	})
+
+	router.POST("/api/alert-push/test", func(c *gin.Context) {
+		req := struct {
+			AlertPush *config.AlertPushConfig `json:"alertPush"`
+			Message   string                  `json:"message"`
+			Channels  []string                `json:"channels"`
+		}{}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "请求参数错误",
+			})
+			return
+		}
+
+		pushCfg := req.AlertPush
+		if pushCfg == nil {
+			cfg := config.ReadConfig()
+			pushCfg = cfg.System.AlertPush
+		}
+		dispatcher := alertpush.NewDispatcher(pushCfg)
+		if dispatcher == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "告警推送未启用或配置为空",
+			})
+			return
+		}
+
+		message := strings.TrimSpace(req.Message)
+		if message == "" {
+			message = "这是一条来自 NginxPulse 的测试告警消息。"
+		}
+
+		entry := store.SystemNotification{
+			Level:    "info",
+			Category: "alert_push_test",
+			Title:    "告警推送测试",
+			Message:  message,
+			Metadata: map[string]interface{}{
+				"test": true,
+				"time": time.Now().Format("2006-01-02 15:04:05"),
+			},
+		}
+
+		results := dispatcher.SendWithResult(entry, req.Channels)
+		tested := 0
+		succeeded := 0
+		for _, result := range results {
+			tested++
+			if result.Success {
+				succeeded++
+			}
+		}
+		if tested == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "没有可用的推送通道",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success":   tested == succeeded,
+			"tested":    tested,
+			"succeeded": succeeded,
+			"results":   results,
+		})
 	})
 
 	router.GET("/api/version", func(c *gin.Context) {

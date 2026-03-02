@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/likaia/nginxpulse/internal/alertpush"
 	"github.com/likaia/nginxpulse/internal/config"
 	"github.com/likaia/nginxpulse/internal/enrich"
 	"github.com/likaia/nginxpulse/internal/ingest/dedup"
@@ -158,6 +159,7 @@ type LogParser struct {
 	lineParsers       map[string]*logLineParser // key: websiteID or websiteID:sourceID
 	dedup             *dedup.Cache
 	whitelistMatchers map[string]*enrich.WhitelistMatcher
+	alertDispatcher   *alertpush.Dispatcher
 }
 
 // NewLogParser 创建新的日志解析器
@@ -187,6 +189,7 @@ func NewLogParser(userRepoPtr *store.Repository) *LogParser {
 		lineParsers:       make(map[string]*logLineParser),
 		dedup:             dedup.NewCache(100000, 10*time.Minute),
 		whitelistMatchers: make(map[string]*enrich.WhitelistMatcher),
+		alertDispatcher:   alertpush.NewDispatcher(cfg.System.AlertPush),
 	}
 	for _, websiteID := range config.GetAllWebsiteIDs() {
 		if site, ok := config.GetWebsiteByID(websiteID); ok {

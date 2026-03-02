@@ -164,6 +164,56 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 	if cfg.System.IPGeoCacheLimit <= 0 {
 		addError("system.ipGeoCacheLimit", "ipGeoCacheLimit 必须大于 0")
 	}
+	if cfg.System.AlertPush != nil {
+		alert := cfg.System.AlertPush
+		if strings.TrimSpace(alert.Timeout) != "" {
+			timeout, err := time.ParseDuration(strings.TrimSpace(alert.Timeout))
+			if err != nil {
+				addError("system.alertPush.timeout", "alertPush.timeout 格式无效，示例：3s、10s")
+			} else if timeout <= 0 {
+				addError("system.alertPush.timeout", "alertPush.timeout 必须大于 0")
+			}
+		}
+
+		validateWebhook := func(field, label, webhook string, enabled bool) {
+			if !enabled {
+				return
+			}
+			if strings.TrimSpace(webhook) == "" {
+				addError(field, label+" webhook 不能为空")
+				return
+			}
+			if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(webhook)), "http://") &&
+				!strings.HasPrefix(strings.ToLower(strings.TrimSpace(webhook)), "https://") {
+				addError(field, label+" webhook 必须是 http(s) 地址")
+			}
+		}
+
+		validateWebhook("system.alertPush.feishu.webhook", "飞书", alert.Feishu.Webhook, alert.Feishu.Enabled)
+		validateWebhook("system.alertPush.dingtalk.webhook", "钉钉", alert.DingTalk.Webhook, alert.DingTalk.Enabled)
+		validateWebhook("system.alertPush.wecom.webhook", "企微", alert.WeCom.Webhook, alert.WeCom.Enabled)
+
+		if alert.Email.Enabled {
+			if strings.TrimSpace(alert.Email.Host) == "" {
+				addError("system.alertPush.email.host", "邮件 SMTP host 不能为空")
+			}
+			if alert.Email.Port <= 0 {
+				addError("system.alertPush.email.port", "邮件 SMTP port 必须大于 0")
+			}
+			if strings.TrimSpace(alert.Email.From) == "" {
+				addError("system.alertPush.email.from", "邮件 from 不能为空")
+			}
+			recipients := 0
+			for _, value := range alert.Email.To {
+				if strings.TrimSpace(value) != "" {
+					recipients++
+				}
+			}
+			if recipients == 0 {
+				addError("system.alertPush.email.to", "邮件收件人不能为空")
+			}
+		}
+	}
 	if cfg.System.AccessKeyExpireDays <= 0 {
 		addError("system.accessKeyExpireDays", "accessKeyExpireDays 必须大于 0")
 	}

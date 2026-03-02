@@ -453,6 +453,52 @@
                   <input v-model.trim="systemDraft.logDestination" class="setup-input" type="text" />
                 </div>
                 <div class="setup-field">
+                  <label class="setup-label">{{ t('setup.fields.alertPushJson') }}</label>
+                  <textarea
+                    v-model.trim="systemDraft.alertPushJson"
+                    class="setup-textarea"
+                    rows="8"
+                    :placeholder="t('setup.placeholders.alertPushJson')"
+                  ></textarea>
+                  <div class="setup-hint">{{ t('setup.hints.alertPushJson') }}</div>
+                  <div v-if="fieldError('system.alertPush')" class="setup-error">
+                    {{ fieldError('system.alertPush') }}
+                  </div>
+                </div>
+                <div class="setup-field">
+                  <label class="setup-label">{{ t('setup.fields.alertPushTestMessage') }}</label>
+                  <input
+                    v-model.trim="alertPushTestMessage"
+                    class="setup-input"
+                    type="text"
+                    :placeholder="t('setup.placeholders.alertPushTestMessage')"
+                  />
+                  <div class="setup-hint">{{ t('setup.hints.alertPushTestMessage') }}</div>
+                  <div class="setup-inline-actions">
+                    <button
+                      class="ghost-button"
+                      type="button"
+                      :disabled="alertPushTesting"
+                      @click="runAlertPushTest"
+                    >
+                      {{ alertPushTesting ? t('setup.actions.testingAlertPush') : t('setup.actions.testAlertPush') }}
+                    </button>
+                  </div>
+                  <div v-if="alertPushTestError" class="setup-error">
+                    {{ alertPushTestError }}
+                  </div>
+                </div>
+                <div v-if="alertPushTestResult" class="setup-alert" :class="alertPushTestResult.success ? 'success' : 'warning'">
+                  <div class="setup-alert-title">
+                    {{ t('setup.alertPushTest.summary', { success: alertPushTestResult.succeeded, total: alertPushTestResult.tested }) }}
+                  </div>
+                  <ul class="setup-alert-list">
+                    <li v-for="(item, channel) in alertPushTestResult.results" :key="`alert-test-${channel}`">
+                      {{ alertChannelLabel(channel) }}: {{ item.success ? t('setup.alertPushTest.ok') : (item.error || t('setup.alertPushTest.failed')) }}
+                    </li>
+                  </ul>
+                </div>
+                <div class="setup-field">
                   <label class="setup-label">{{ t('setup.fields.statusCodeInclude') }}</label>
                   <input v-model.trim="pvDraft.statusCodeIncludeText" class="setup-input" type="text" :placeholder="t('setup.placeholders.statusCodeInclude')" />
                   <div v-if="fieldError('pvFilter.statusCodeInclude')" class="setup-error">
@@ -634,9 +680,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
-import { fetchConfig, restartSystem, saveConfig, validateConfig } from '@/api';
+import { fetchConfig, restartSystem, saveConfig, testAlertPush, validateConfig } from '@/api';
 import { normalizeLocale, setLocale } from '@/i18n';
-import type { ConfigPayload, FieldError, SourceConfig } from '@/api/types';
+import type { AlertPushTestResponse, ConfigPayload, FieldError, SourceConfig } from '@/api/types';
 
 type LogValidationStatus = 'idle' | 'success' | 'error';
 
@@ -735,6 +781,10 @@ const fieldErrors = ref<Record<string, string>>({});
 const configReadonly = ref(false);
 const copyStatus = ref('');
 const defaultLogPath = ref('');
+const alertPushTestMessage = ref('');
+const alertPushTesting = ref(false);
+const alertPushTestResult = ref<AlertPushTestResponse | null>(null);
+const alertPushTestError = ref('');
 let copyStatusTimer: number | null = null;
 
 const serverPort = ref(':8089');
@@ -752,6 +802,7 @@ const systemDraft = reactive({
   logRetentionDays: '30',
   parseBatchSize: '100',
   ipGeoCacheLimit: '1000000',
+  alertPushJson: '',
   demoMode: false,
   mobilePwaEnabled: false,
   accessKeysText: '',
@@ -1251,6 +1302,29 @@ function parseOptionalInt(
   return Math.floor(parsed);
 }
 
+function parseOptionalJSONObject(
+  value: string,
+  field: string,
+  errors: FieldError[]
+): Record<string, any> | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
+      errors.push({ field, message: t('setup.errors.objectJsonRequired') });
+      return undefined;
+    }
+    return parsed as Record<string, any>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : t('setup.errors.invalidJson');
+    errors.push({ field, message: t('setup.errors.parseJson', { message }) });
+    return undefined;
+  }
+}
+
 function parseIntList(value: string, field: string, errors: FieldError[]) {
   const items = splitList(value);
   if (items.length === 0) {
@@ -1354,6 +1428,7 @@ function buildConfig(collectErrors = true): { config: ConfigPayload; errors: Fie
       logRetentionDays: parseOptionalInt(systemDraft.logRetentionDays, 'system.logRetentionDays', errors, false),
       parseBatchSize: parseOptionalInt(systemDraft.parseBatchSize, 'system.parseBatchSize', errors, false),
       ipGeoCacheLimit: parseOptionalInt(systemDraft.ipGeoCacheLimit, 'system.ipGeoCacheLimit', errors, false),
+      alertPush: parseOptionalJSONObject(systemDraft.alertPushJson, 'system.alertPush', errors),
       demoMode: systemDraft.demoMode,
       mobilePwaEnabled: systemDraft.mobilePwaEnabled,
       accessKeys: splitList(systemDraft.accessKeysText),
@@ -1533,6 +1608,49 @@ function buildWebRootPath(basePath: string) {
   return normalized ? `/${normalized}/` : '/';
 }
 
+function alertChannelLabel(channel: string) {
+  const normalized = channel.trim().toLowerCase();
+  if (normalized === 'feishu') {
+    return 'Feishu';
+  }
+  if (normalized === 'dingtalk') {
+    return 'DingTalk';
+  }
+  if (normalized === 'wecom') {
+    return 'WeCom';
+  }
+  if (normalized === 'email') {
+    return t('setup.alertPushTest.channelEmail');
+  }
+  return channel;
+}
+
+async function runAlertPushTest() {
+  if (alertPushTesting.value) {
+    return;
+  }
+
+  alertPushTesting.value = true;
+  alertPushTestError.value = '';
+  alertPushTestResult.value = null;
+  try {
+    const parseErrors: FieldError[] = [];
+    const alertPush = parseOptionalJSONObject(systemDraft.alertPushJson, 'system.alertPush', parseErrors);
+    if (parseErrors.length > 0) {
+      throw new Error(parseErrors[0].message);
+    }
+
+    alertPushTestResult.value = await testAlertPush({
+      alertPush,
+      message: alertPushTestMessage.value.trim(),
+    });
+  } catch (err) {
+    alertPushTestError.value = err instanceof Error ? err.message : t('common.requestFailed');
+  } finally {
+    alertPushTesting.value = false;
+  }
+}
+
 async function loadConfig() {
   loading.value = true;
   loadError.value = '';
@@ -1562,12 +1680,16 @@ function hydrateDraft(config: ConfigPayload) {
   systemDraft.logRetentionDays = String(config.system?.logRetentionDays ?? 30);
   systemDraft.parseBatchSize = String(config.system?.parseBatchSize ?? 100);
   systemDraft.ipGeoCacheLimit = String(config.system?.ipGeoCacheLimit ?? 1000000);
+  systemDraft.alertPushJson = config.system?.alertPush ? JSON.stringify(config.system.alertPush, null, 2) : '';
   systemDraft.demoMode = Boolean(config.system?.demoMode);
   systemDraft.mobilePwaEnabled = Boolean(config.system?.mobilePwaEnabled);
   systemDraft.accessKeysText = (config.system?.accessKeys || []).join(', ');
   systemDraft.accessKeyExpireDays = String(config.system?.accessKeyExpireDays ?? 7);
   systemDraft.language = config.system?.language || 'zh-CN';
   systemDraft.webBasePath = config.system?.webBasePath || '';
+  alertPushTestMessage.value = '';
+  alertPushTestResult.value = null;
+  alertPushTestError.value = '';
 
   pvDraft.statusCodeIncludeText = (config.pvFilter?.statusCodeInclude || []).join(', ');
   pvDraft.excludePatternsText = (config.pvFilter?.excludePatterns || []).join('\n');

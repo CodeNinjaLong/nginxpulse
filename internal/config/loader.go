@@ -332,6 +332,22 @@ func applyDefaults(cfg *Config) {
 	if cfg.System.IPGeoAPIURL == "" {
 		cfg.System.IPGeoAPIURL = defaultSystem.IPGeoAPIURL
 	}
+	if cfg.System.AlertPush != nil {
+		cfg.System.AlertPush.Feishu.Webhook = strings.TrimSpace(cfg.System.AlertPush.Feishu.Webhook)
+		cfg.System.AlertPush.DingTalk.Webhook = strings.TrimSpace(cfg.System.AlertPush.DingTalk.Webhook)
+		cfg.System.AlertPush.DingTalk.Secret = strings.TrimSpace(cfg.System.AlertPush.DingTalk.Secret)
+		cfg.System.AlertPush.WeCom.Webhook = strings.TrimSpace(cfg.System.AlertPush.WeCom.Webhook)
+		cfg.System.AlertPush.Email.Host = strings.TrimSpace(cfg.System.AlertPush.Email.Host)
+		cfg.System.AlertPush.Email.Username = strings.TrimSpace(cfg.System.AlertPush.Email.Username)
+		cfg.System.AlertPush.Email.Password = strings.TrimSpace(cfg.System.AlertPush.Email.Password)
+		cfg.System.AlertPush.Email.From = strings.TrimSpace(cfg.System.AlertPush.Email.From)
+		cfg.System.AlertPush.Timeout = strings.TrimSpace(cfg.System.AlertPush.Timeout)
+		if cfg.System.AlertPush.Timeout == "" {
+			cfg.System.AlertPush.Timeout = "5s"
+		} else if parsed, err := time.ParseDuration(cfg.System.AlertPush.Timeout); err != nil || parsed <= 0 {
+			cfg.System.AlertPush.Timeout = "5s"
+		}
+	}
 	if cfg.System.AccessKeyExpireDays <= 0 {
 		cfg.System.AccessKeyExpireDays = defaultSystem.AccessKeyExpireDays
 	}

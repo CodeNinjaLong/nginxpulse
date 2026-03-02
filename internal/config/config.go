@@ -94,19 +94,51 @@ type WhitelistConfig struct {
 }
 
 type SystemConfig struct {
-	LogDestination      string   `json:"logDestination"`
-	TaskInterval        string   `json:"taskInterval"` // "5m" "25s"
-	HTTPSourceTimeout   string   `json:"httpSourceTimeout,omitempty"`
-	LogRetentionDays    int      `json:"logRetentionDays"`
-	ParseBatchSize      int      `json:"parseBatchSize"`
-	IPGeoCacheLimit     int      `json:"ipGeoCacheLimit"`
-	IPGeoAPIURL         string   `json:"ipGeoApiUrl"`
-	DemoMode            bool     `json:"demoMode"`
-	AccessKeys          []string `json:"accessKeys"`
-	AccessKeyExpireDays int      `json:"accessKeyExpireDays"`
-	Language            string   `json:"language"`
-	WebBasePath         string   `json:"webBasePath,omitempty"`
-	MobilePWAEnabled    bool     `json:"mobilePwaEnabled"`
+	LogDestination      string           `json:"logDestination"`
+	TaskInterval        string           `json:"taskInterval"` // "5m" "25s"
+	HTTPSourceTimeout   string           `json:"httpSourceTimeout,omitempty"`
+	LogRetentionDays    int              `json:"logRetentionDays"`
+	ParseBatchSize      int              `json:"parseBatchSize"`
+	IPGeoCacheLimit     int              `json:"ipGeoCacheLimit"`
+	IPGeoAPIURL         string           `json:"ipGeoApiUrl"`
+	AlertPush           *AlertPushConfig `json:"alertPush,omitempty"`
+	DemoMode            bool             `json:"demoMode"`
+	AccessKeys          []string         `json:"accessKeys"`
+	AccessKeyExpireDays int              `json:"accessKeyExpireDays"`
+	Language            string           `json:"language"`
+	WebBasePath         string           `json:"webBasePath,omitempty"`
+	MobilePWAEnabled    bool             `json:"mobilePwaEnabled"`
+}
+
+type AlertPushConfig struct {
+	Enabled  bool                `json:"enabled"`
+	Timeout  string              `json:"timeout,omitempty"`
+	Feishu   AlertWebhookConfig  `json:"feishu,omitempty"`
+	DingTalk AlertDingTalkConfig `json:"dingtalk,omitempty"`
+	WeCom    AlertWebhookConfig  `json:"wecom,omitempty"`
+	Email    AlertEmailConfig    `json:"email,omitempty"`
+}
+
+type AlertWebhookConfig struct {
+	Enabled bool   `json:"enabled"`
+	Webhook string `json:"webhook,omitempty"`
+}
+
+type AlertDingTalkConfig struct {
+	Enabled bool   `json:"enabled"`
+	Webhook string `json:"webhook,omitempty"`
+	Secret  string `json:"secret,omitempty"`
+}
+
+type AlertEmailConfig struct {
+	Enabled  bool     `json:"enabled"`
+	Host     string   `json:"host,omitempty"`
+	Port     int      `json:"port,omitempty"`
+	Username string   `json:"username,omitempty"`
+	Password string   `json:"password,omitempty"`
+	From     string   `json:"from,omitempty"`
+	To       []string `json:"to,omitempty"`
+	UseTLS   bool     `json:"useTLS,omitempty"`
 }
 
 type ServerConfig struct {
