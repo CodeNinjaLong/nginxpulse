@@ -62,6 +62,7 @@ NginxPulse 现已支持 `logType=iis`（别名：`iis-w3c`），默认按 IIS W3
 - 清理任务在系统时间凌晨 2 点触发（按系统时区）。
 - 该清理仅针对“已解析入库”的访问数据；不会删除你原始的 Nginx 日志文件。
 - 系统运行日志（`var/nginxpulse_data/nginxpulse.log`）走文件轮转策略，与 `logRetentionDays` 无关。
+- 修改 `logRetentionDays` 后需重启服务进程/容器才会生效；如需立即按新值处理历史数据，请重启后执行“重新解析”。
 
 ## 多个日志文件如何挂载？
 `WEBSITES` 是一个 **JSON 数组**，每个元素描述一个网站。`logPath` 需要填写**容器内可访问的路径**，你可以按需指定。

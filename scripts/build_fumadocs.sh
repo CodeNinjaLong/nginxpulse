@@ -6,6 +6,7 @@ DOCS_DIR="$ROOT_DIR/docs/fumadocs"
 OUT_DIR="$DOCS_DIR/out"
 SYNC_SCRIPT="$ROOT_DIR/scripts/sync_fumadocs_docs.sh"
 DIST_DIR="$ROOT_DIR/dist"
+LATEST_DIR="${LATEST_DIR:-$DIST_DIR/nginxpulse-docs}"
 SKIP_SYNC="${SKIP_SYNC:-0}"
 SKIP_PACKAGE="${SKIP_PACKAGE:-0}"
 
@@ -19,6 +20,7 @@ Environment variables:
 
 Output:
   Static site: docs/fumadocs/out
+  Latest dir:  dist/nginxpulse-docs (override via LATEST_DIR)
   Package:     dist/nginxpulse-docs-<timestamp>.tar.gz
 EOF
 }
@@ -84,11 +86,16 @@ fi
 
 echo "Static docs generated at: $OUT_DIR"
 
+mkdir -p "$DIST_DIR"
+echo "Syncing latest static docs to: $LATEST_DIR"
+rm -rf "$LATEST_DIR"
+mkdir -p "$LATEST_DIR"
+cp -a "$OUT_DIR"/. "$LATEST_DIR"/
+
 if [[ "$SKIP_PACKAGE" == "1" ]]; then
   exit 0
 fi
 
-mkdir -p "$DIST_DIR"
 timestamp="$(date +%Y%m%d-%H%M%S)"
 package_file="$DIST_DIR/nginxpulse-docs-$timestamp.tar.gz"
 
