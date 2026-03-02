@@ -15,6 +15,10 @@ import { computed, onBeforeUnmount, onMounted, ref, inject } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { fetchAppStatus } from '@/api';
 
+const props = defineProps<{
+  websiteId?: string;
+}>();
+
 const emit = defineEmits<{
   (e: 'finished'): void;
   (e: 'update:active', value: boolean): void;
@@ -108,10 +112,17 @@ async function refresh() {
   try {
     const status = await fetchAppStatus();
     const parsing = Boolean(status.log_parsing);
+    const parsingWebsiteID = typeof status.log_parsing_website_id === 'string'
+      ? status.log_parsing_website_id
+      : '';
+    const currentWebsiteID = typeof props.websiteId === 'string' ? props.websiteId.trim() : '';
+    const websiteMatched = currentWebsiteID
+      ? parsingWebsiteID === currentWebsiteID
+      : true;
     const stage = typeof status.log_parsing_stage === 'string' ? status.log_parsing_stage : '';
-    const shouldShow = parsing && (stage === '' || stage === 'initial' || stage === 'reparse');
+    const shouldShow = parsing && websiteMatched && (stage === '' || stage === 'initial' || stage === 'reparse');
     const wasParsing = lastParsing === true;
-    lastParsing = parsing;
+    lastParsing = shouldShow;
 
     setVisible(shouldShow);
     progressPercent.value = shouldShow ? normalizeProgress(status.log_parsing_progress) : null;
@@ -119,7 +130,7 @@ async function refresh() {
       ? normalizeSeconds(status.log_parsing_estimated_remaining_seconds)
       : null;
 
-    if (wasParsing && !parsing) {
+    if (wasParsing && !shouldShow) {
       emit('finished');
     }
 

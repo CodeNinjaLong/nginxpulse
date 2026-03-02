@@ -471,7 +471,7 @@
     </div>
   </section>
 
-  <ParsingOverlay @finished="loadDailyReport" />
+  <ParsingOverlay :website-id="currentWebsiteId" @finished="loadDailyReport" />
 </template>
 
 <script setup lang="ts">

@@ -30,6 +30,7 @@ var (
 	lastCleanupDate             = ""
 	parsingMu                   sync.RWMutex
 	parsingMode                 parseMode
+	parsingWebsiteID            string
 )
 
 const defaultNginxTimeLayout = "02/Jan/2006:15:04:05 -0700"
@@ -660,9 +661,12 @@ func (p *LogParser) TriggerReparse(websiteID string) error {
 
 func (p *LogParser) scanNginxLogsInternal(websiteIDs []string) []ParserResult {
 	setParsingTotalBytes(p.calculateTotalBytesToScan(websiteIDs))
+	setParsingWebsiteID("")
+	defer setParsingWebsiteID("")
 	parserResults := make([]ParserResult, len(websiteIDs))
 
 	for i, id := range websiteIDs {
+		setParsingWebsiteID(id)
 		startTime := time.Now()
 
 		website, _ := config.GetWebsiteByID(id)
@@ -768,6 +772,7 @@ func startIPParsingWithStage(stage parseStage) bool {
 		return false
 	}
 	parsingMode = parseModeForeground
+	parsingWebsiteID = ""
 	setParseStage(stage)
 	resetParsingProgress()
 	return true
@@ -778,6 +783,7 @@ func finishIPParsing() {
 	if parsingMode == parseModeForeground {
 		parsingMode = parseModeNone
 	}
+	parsingWebsiteID = ""
 	parsingMu.Unlock()
 	resetParseStage()
 	finalizeParsingProgress()
@@ -787,6 +793,25 @@ func IsIPParsing() bool {
 	parsingMu.RLock()
 	defer parsingMu.RUnlock()
 	return parsingMode == parseModeForeground
+}
+
+func GetParsingWebsiteID() string {
+	parsingMu.RLock()
+	defer parsingMu.RUnlock()
+	if parsingMode != parseModeForeground {
+		return ""
+	}
+	return parsingWebsiteID
+}
+
+func setParsingWebsiteID(websiteID string) {
+	parsingMu.Lock()
+	defer parsingMu.Unlock()
+	if parsingMode != parseModeForeground {
+		parsingWebsiteID = ""
+		return
+	}
+	parsingWebsiteID = websiteID
 }
 
 func startBackfillParsing() bool {

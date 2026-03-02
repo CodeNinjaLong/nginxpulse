@@ -341,7 +341,7 @@
     </div>
   </section>
 
-  <ParsingOverlay @finished="loadRealtime" />
+  <ParsingOverlay :website-id="currentWebsiteId" @finished="loadRealtime" />
 </template>
 
 <script setup lang="ts">

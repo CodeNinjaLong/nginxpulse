@@ -663,7 +663,7 @@
       </div>
     </div>
 
-    <ParsingOverlay @finished="refreshAll" />
+    <ParsingOverlay :website-id="currentWebsiteId" @finished="refreshAll" />
   </div>
 </template>
 
