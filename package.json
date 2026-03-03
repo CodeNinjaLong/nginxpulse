@@ -1,0 +1,28 @@
+{
+  "name": "nginxpulse-scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NginxPulse 脚本聚合入口",
+  "scripts": {
+    "help": "bash ./scripts/npm_help.sh",
+    "dev:local": "bash ./scripts/dev_local.sh",
+    "build:single": "bash ./scripts/build_single.sh",
+    "docs:sync": "bash ./scripts/sync_fumadocs_docs.sh",
+    "docs:dev": "bash ./scripts/dev_fumadocs.sh",
+    "docs:build": "bash ./scripts/build_fumadocs.sh",
+    "wiki:push": "bash ./scripts/push_wiki.sh",
+    "docker:publish": "bash ./scripts/publish_docker.sh",
+    "docker:publish:beta": "bash ./scripts/publish_docker_beta.sh",
+    "assets:crop-supporters": "bash ./scripts/crop_supporters.sh",
+    "db:schema:render": "python3 ./scripts/render_pg_schema.py",
+    "website:ids": "python3 ./scripts/website_ids.py",
+    "web:dev": "npm --prefix ./webapp run dev",
+    "web:build": "npm --prefix ./webapp run build",
+    "web:preview": "npm --prefix ./webapp run preview",
+    "mobile:dev": "npm --prefix ./webapp_mobile run dev",
+    "mobile:build": "npm --prefix ./webapp_mobile run build",
+    "mobile:preview": "npm --prefix ./webapp_mobile run preview",
+    "fumadocs:dev": "npm --prefix ./docs/fumadocs run dev",
+    "fumadocs:build": "npm --prefix ./docs/fumadocs run build"
+  }
+}
