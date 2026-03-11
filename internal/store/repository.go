@@ -63,7 +63,13 @@ type SystemNotification struct {
 }
 
 func sanitizeUTF8(s string) string {
-	if s == "" || utf8.ValidString(s) {
+	if s == "" {
+		return s
+	}
+	if strings.IndexByte(s, 0) >= 0 {
+		s = strings.ReplaceAll(s, "\x00", "")
+	}
+	if utf8.ValidString(s) {
 		return s
 	}
 	return strings.ToValidUTF8(s, "?")
