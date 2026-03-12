@@ -1577,6 +1577,14 @@ function buildDayTimeRange(dateStr: string) {
   font-weight: 700;
 }
 
+:deep(.header-toolbar.header-toolbar-tech .toolbar-date-picker .p-inputtext) {
+  height: var(--toolbar-item-height);
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  background: linear-gradient(180deg, rgba(var(--primary-color-rgb), 0.07), rgba(var(--primary-color-rgb), 0.03));
+  border: 1px solid rgba(var(--primary-color-rgb), 0.14);
+  border-right: 0;
+  box-shadow: inset 0 0 0 1px transparent;
+}
 :deep(.p-datepicker-dropdown) {
   border-start-end-radius: var(--radius-pill);
   border-end-end-radius: var(--radius-pill);
