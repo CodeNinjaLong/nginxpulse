@@ -135,9 +135,12 @@
                 class="date-range-picker"
                 dateFormat="yy-mm-dd"
                 selectionMode="range"
+                showTime
+                hourFormat="24"
                 :hideOnRangeSelection="true"
                 showButtonBar
                 :showClear="true"
+                :manualInput="false"
                 :placeholder="`${t('logs.dateStart')} - ${t('logs.dateEnd')}`"
               />
             </div>
@@ -562,10 +565,60 @@
           <p>{{ t(reparseDialogBlockedMessageKey) }}</p>
         </template>
         <template v-else>
-          <p>
-            {{ t('logs.reparseConfirm', { name: currentWebsiteLabel }) }}
-          </p>
-          <p class="reparse-dialog-note">{{ t('logs.reparseNote') }}</p>
+          <div class="reparse-mode-switch" role="tablist" :aria-label="t('logs.reparseTitle')">
+            <button
+              type="button"
+              class="reparse-mode-btn"
+              :class="{ active: reparseMode === 'full' }"
+              :disabled="reparseLoading"
+              @click="reparseMode = 'full'"
+            >
+              {{ t('logs.reparseModeFull') }}
+            </button>
+            <button
+              type="button"
+              class="reparse-mode-btn"
+              :class="{ active: reparseMode === 'range' }"
+              :disabled="reparseLoading"
+              @click="reparseMode = 'range'"
+            >
+              {{ t('logs.reparseModeRange') }}
+            </button>
+          </div>
+          <template v-if="reparseMode === 'full'">
+            <p>
+              {{ t('logs.reparseConfirm', { name: currentWebsiteLabel }) }}
+            </p>
+            <p class="reparse-dialog-note">{{ t('logs.reparseNote') }}</p>
+          </template>
+          <template v-else>
+            <p>
+              {{ t('logs.reparseRangeConfirm', { name: currentWebsiteLabel }) }}
+            </p>
+            <div class="reparse-range-grid">
+              <div class="reparse-range-field">
+                <label for="reparse-range-start">{{ t('logs.reparseRangeStart') }}</label>
+                <input
+                  id="reparse-range-start"
+                  v-model="reparseRangeStart"
+                  class="reparse-range-input"
+                  type="datetime-local"
+                  :disabled="reparseLoading"
+                />
+              </div>
+              <div class="reparse-range-field">
+                <label for="reparse-range-end">{{ t('logs.reparseRangeEnd') }}</label>
+                <input
+                  id="reparse-range-end"
+                  v-model="reparseRangeEnd"
+                  class="reparse-range-input"
+                  type="datetime-local"
+                  :disabled="reparseLoading"
+                />
+              </div>
+            </div>
+            <p class="reparse-dialog-note">{{ t('logs.reparseRangeNote') }}</p>
+          </template>
         </template>
         <p v-if="reparseError" class="reparse-dialog-error">{{ reparseError }}</p>
       </div>
@@ -770,6 +823,9 @@ const reparseDialogVisible = ref(false);
 const reparseLoading = ref(false);
 const reparseError = ref('');
 const reparseDialogMode = ref<'confirm' | 'blocked'>('confirm');
+const reparseMode = ref<'full' | 'range'>('full');
+const reparseRangeStart = ref('');
+const reparseRangeEnd = ref('');
 const reparseDialogBlockedMessageKey = ref<'logs.reparseBlocked' | 'logs.exportBlocked'>(
   'logs.reparseBlocked'
 );
@@ -1201,18 +1257,51 @@ function formatDateTimeValue(date: Date) {
   )}:${pad(date.getMinutes())}`;
 }
 
+function formatDateTimeLocalValue(date: Date) {
+  return formatDateTimeValue(date).replace(' ', 'T');
+}
+
+function isDateTimeLocalValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '');
+}
+
+function toDateTimeLocalValue(value: string) {
+  if (isDateTimeLocalValue(value)) {
+    return value;
+  }
+  if (isDateTimeValue(value)) {
+    return value.replace(' ', 'T');
+  }
+  return '';
+}
+
+function fromDateTimeLocalValue(value: string) {
+  if (!isDateTimeLocalValue(value)) {
+    return '';
+  }
+  return value.replace('T', ' ');
+}
+
 function parseDateFromTime(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s(\d{2}):(\d{2}))?$/);
   if (!match) {
     return null;
   }
   const year = Number(match[1]);
   const month = Number(match[2]) - 1;
   const day = Number(match[3]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+  const hour = match[4] ? Number(match[4]) : 0;
+  const minute = match[5] ? Number(match[5]) : 0;
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
+  ) {
     return null;
   }
-  return new Date(year, month, day);
+  return new Date(year, month, day, hour, minute, 0, 0);
 }
 
 function buildDateRangeFromTime(start: string, end: string) {
@@ -1855,12 +1944,12 @@ watch(dateRange, (range) => {
   updatingDateRange = true;
   const [start, end] = Array.isArray(range) ? range : [];
   if (start) {
-    timeStart.value = formatDateTimeValue(startOfDay(start));
+    timeStart.value = formatDateTimeValue(start);
   } else {
     timeStart.value = '';
   }
   if (end) {
-    timeEnd.value = formatDateTimeValue(endOfDay(end));
+    timeEnd.value = formatDateTimeValue(end);
   } else {
     timeEnd.value = '';
   }
@@ -2109,6 +2198,10 @@ function openReparseDialog() {
     openDemoBlockedDialog('logs.reparseBlocked');
     return;
   }
+  reparseMode.value = 'full';
+  const now = new Date();
+  reparseRangeStart.value = toDateTimeLocalValue(timeStart.value) || formatDateTimeLocalValue(startOfDay(now));
+  reparseRangeEnd.value = toDateTimeLocalValue(timeEnd.value) || formatDateTimeLocalValue(now);
   reparseDialogMode.value = 'confirm';
   reparseDialogVisible.value = true;
 }
@@ -2174,7 +2267,25 @@ async function confirmReparse() {
   reparseLoading.value = true;
   reparseError.value = '';
   try {
-    await reparseLogs(currentWebsiteId.value);
+    if (reparseMode.value === 'range') {
+      const startAt = fromDateTimeLocalValue(reparseRangeStart.value);
+      const endAt = fromDateTimeLocalValue(reparseRangeEnd.value);
+      if (!startAt || !endAt) {
+        reparseError.value = t('logs.reparseRangeRequired');
+        return;
+      }
+      if (startAt >= endAt) {
+        reparseError.value = t('logs.reparseRangeInvalid');
+        return;
+      }
+      await reparseLogs(currentWebsiteId.value, {
+        mode: 'range',
+        startAt,
+        endAt,
+      });
+    } else {
+      await reparseLogs(currentWebsiteId.value, { mode: 'full' });
+    }
     reparseDialogVisible.value = false;
     currentPage.value = 1;
     await loadLogs();
@@ -2481,7 +2592,7 @@ function nextPage() {
 }
 
 .date-range-picker {
-  width: 220px;
+  width: 300px;
 }
 
 .date-range-picker :deep(.p-inputtext) {
@@ -2831,6 +2942,71 @@ function nextPage() {
   color: var(--muted);
 }
 
+.reparse-mode-switch {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(var(--primary-color-rgb), 0.08);
+  align-self: flex-start;
+}
+
+.reparse-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.reparse-mode-btn.active {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.reparse-mode-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.reparse-range-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reparse-range-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reparse-range-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.reparse-range-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.reparse-range-input:focus {
+  outline: none;
+  border-color: rgba(var(--primary-color-rgb), 0.55);
+  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.14);
+}
+
 .export-progress {
   height: 8px;
   border-radius: var(--radius-pill);
@@ -2942,6 +3118,10 @@ function nextPage() {
   }
 
   .ip-geo-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reparse-range-grid {
     grid-template-columns: 1fr;
   }
 }

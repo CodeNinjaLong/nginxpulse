@@ -373,6 +373,9 @@ func SetupRoutes(
 		type reparseRequest struct {
 			ID        string `json:"id"`
 			Migration bool   `json:"migration"`
+			Mode      string `json:"mode"`
+			StartAt   string `json:"start_at"`
+			EndAt     string `json:"end_at"`
 		}
 
 		var req reparseRequest
@@ -393,7 +396,51 @@ func SetupRoutes(
 			}
 		}
 
-		if err := logParser.TriggerReparse(websiteID); err != nil {
+		mode := strings.ToLower(strings.TrimSpace(req.Mode))
+		if mode == "" {
+			mode = "full"
+		}
+
+		var err error
+		switch mode {
+		case "full":
+			err = logParser.TriggerReparse(websiteID)
+		case "range":
+			if websiteID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "按时间段重解析仅支持单个站点",
+				})
+				return
+			}
+			startAt, parseErr := parseReparseTime(req.StartAt)
+			if parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": fmt.Sprintf("开始时间无效: %v", parseErr),
+				})
+				return
+			}
+			endAt, parseErr := parseReparseTime(req.EndAt)
+			if parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": fmt.Sprintf("结束时间无效: %v", parseErr),
+				})
+				return
+			}
+			if !endAt.After(startAt) {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "结束时间必须晚于开始时间",
+				})
+				return
+			}
+			err = logParser.TriggerRangeReparse(websiteID, startAt, endAt)
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "不支持的重解析模式",
+			})
+			return
+		}
+
+		if err != nil {
 			if errors.Is(err, ingest.ErrParsingInProgress) {
 				c.JSON(http.StatusConflict, gin.H{
 					"error": err.Error(),
@@ -1159,6 +1206,29 @@ func SetupRoutes(
 		c.JSON(http.StatusOK, result)
 	})
 
+}
+
+func parseReparseTime(raw string) (time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("不能为空")
+	}
+
+	layouts := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("不支持的时间格式")
 }
 
 func bindConfigPayload(c *gin.Context) (*config.Config, error) {

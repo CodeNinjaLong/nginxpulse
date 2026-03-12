@@ -79,9 +79,15 @@ export const testAlertPush = async (payload: {
   return response.data;
 };
 
-export const reparseLogs = async (websiteId: string): Promise<void> => {
+export const reparseLogs = async (
+  websiteId: string,
+  options: { mode?: 'full' | 'range'; startAt?: string; endAt?: string } = {}
+): Promise<void> => {
   await client.post<ApiResponse<{ success: boolean }>>('api/logs/reparse', {
     id: websiteId,
+    mode: options.mode || 'full',
+    start_at: options.startAt,
+    end_at: options.endAt,
   });
 };
 

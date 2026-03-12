@@ -584,6 +584,16 @@ const enUS = {
     exportBlocked: 'Demo mode is enabled. Export is not available for demo data.',
     reparseConfirm: 'This will clear logs for “{name}” and reparse from file.',
     reparseNote: 'This action cannot be undone and may take a few minutes.',
+    reparseModeFull: 'Full reparse',
+    reparseModeRange: 'Range reparse',
+    reparseRangeConfirm:
+      'This will clear log details for the selected time range of “{name}” and reparse only that window from the log files.',
+    reparseRangeNote:
+      'Range reparse will rebuild derived stats for the current website to keep sessions and aggregates correct.',
+    reparseRangeStart: 'Start time',
+    reparseRangeEnd: 'End time',
+    reparseRangeRequired: 'Please provide both start and end times',
+    reparseRangeInvalid: 'End time must be later than start time',
     reparseCancel: 'Cancel',
     reparseSubmit: 'Continue reparse',
     reparseLoading: 'Parsing...',
