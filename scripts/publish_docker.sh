@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/docker_buildx_helper.sh"
 
 usage() {
   cat <<'EOF'
@@ -117,6 +118,9 @@ echo "Time:     $BUILD_TIME"
 
 if $PUSH; then
   if docker buildx version >/dev/null 2>&1; then
+    if $MULTI_PLATFORM; then
+      ensure_container_buildx_builder
+    fi
     docker buildx build \
       --platform "$PLATFORMS" \
       --push \
