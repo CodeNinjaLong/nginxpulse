@@ -1,8 +1,20 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+@import '@fontsource/sora/600.css';
+@import '@fontsource/sora/700.css';
+@import '@fontsource/noto-sans-sc/chinese-simplified-400.css';
+@import '@fontsource/noto-sans-sc/chinese-simplified-500.css';
+@import '@fontsource/noto-sans-sc/chinese-simplified-600.css';
+@import '@fontsource/noto-sans-sc/chinese-simplified-700.css';
+@import '@fontsource/noto-sans-sc/latin-400.css';
+@import '@fontsource/noto-sans-sc/latin-500.css';
+@import '@fontsource/noto-sans-sc/latin-600.css';
+@import '@fontsource/noto-sans-sc/latin-700.css';
 
 :root {
+  --font-sora: 'Sora';
+  --font-noto-sans-sc: 'Noto Sans SC';
   --color-fd-background: hsl(220, 24%, 97%);
   --color-fd-foreground: hsl(222, 47%, 11%);
   --color-fd-muted: hsl(220, 22%, 95%);
@@ -42,6 +54,10 @@
 
 html,
 body {
+  font-family: var(--font-noto-sans-sc), system-ui, sans-serif;
+}
+
+:where(h1, h2, h3, h4, h5, h6, .np-font-display) {
   font-family: var(--font-sora), var(--font-noto-sans-sc), system-ui, sans-serif;
 }
 

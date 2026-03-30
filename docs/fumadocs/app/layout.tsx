@@ -1,17 +1,6 @@
-import { Noto_Sans_SC, Sora } from 'next/font/google';
 import { Provider } from '@/components/provider';
 import type { Metadata } from 'next';
 import './global.css';
-
-const sora = Sora({
-  subsets: ['latin'],
-  variable: '--font-sora',
-});
-
-const notoSansSC = Noto_Sans_SC({
-  subsets: ['latin'],
-  variable: '--font-noto-sans-sc',
-});
 
 const metadataBase = new URL(process.env.NEXT_PUBLIC_DOCS_SITE_URL ?? 'http://localhost:4173');
 
@@ -26,11 +15,7 @@ export const metadata: Metadata = {
 
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
-    <html
-      lang="zh-CN"
-      className={`${sora.variable} ${notoSansSC.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className="min-h-screen">
         <div className="np-global-bg" aria-hidden />
         <div className="relative z-10 flex min-h-screen flex-col">

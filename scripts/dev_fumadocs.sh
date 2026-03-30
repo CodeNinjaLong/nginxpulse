@@ -19,6 +19,8 @@ ensure_node_deps() {
   local install_needed=0
   if [[ ! -d "$DOCS_DIR/node_modules" ]]; then
     install_needed=1
+  elif [[ ! -x "$DOCS_DIR/node_modules/.bin/next" ]]; then
+    install_needed=1
   elif [[ "$DOCS_DIR/package.json" -nt "$DOCS_DIR/node_modules" ]]; then
     install_needed=1
   elif [[ -f "$DOCS_DIR/pnpm-lock.yaml" && "$DOCS_DIR/pnpm-lock.yaml" -nt "$DOCS_DIR/node_modules" ]]; then
@@ -50,4 +52,4 @@ ensure_node_deps
 echo "Starting Fumadocs on http://localhost:${DOCS_PORT}"
 echo "LAN access: http://<your-ip>:${DOCS_PORT}"
 cd "$DOCS_DIR"
-exec pnpm run dev -- --hostname "$DOCS_HOST" --port "$DOCS_PORT"
+exec pnpm exec next dev --hostname "$DOCS_HOST" --port "$DOCS_PORT"

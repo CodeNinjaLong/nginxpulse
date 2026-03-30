@@ -93,18 +93,21 @@ ensure_config() {
 }
 
 ensure_frontend_deps() {
-  ensure_node_deps "$ROOT_DIR/webapp" "frontend"
+  ensure_node_deps "$ROOT_DIR/webapp" "frontend" "vite"
 }
 
 ensure_mobile_frontend_deps() {
-  ensure_node_deps "$ROOT_DIR/webapp_mobile" "mobile frontend"
+  ensure_node_deps "$ROOT_DIR/webapp_mobile" "mobile frontend" "vite"
 }
 
 ensure_node_deps() {
   local dir="$1"
   local label="$2"
+  local bin_name="${3:-}"
   local install_needed=0
   if [[ ! -d "$dir/node_modules" ]]; then
+    install_needed=1
+  elif [[ -n "$bin_name" && ! -x "$dir/node_modules/.bin/$bin_name" ]]; then
     install_needed=1
   elif [[ "$dir/package.json" -nt "$dir/node_modules" ]]; then
     install_needed=1
@@ -289,13 +292,13 @@ start_backend_with_docker() {
 
 start_frontend() {
   echo "Starting frontend on http://localhost:8088"
-  (cd "$ROOT_DIR/webapp" && pnpm run dev) &
+  (cd "$ROOT_DIR/webapp" && pnpm exec vite --host 0.0.0.0 --port 8088) &
   frontend_pid=$!
 }
 
 start_mobile_frontend() {
   echo "Starting mobile frontend on http://localhost:8087 (LAN: http://<your-ip>:8087)"
-  (cd "$ROOT_DIR/webapp_mobile" && pnpm run dev -- --host 0.0.0.0 --port 8087) &
+  (cd "$ROOT_DIR/webapp_mobile" && pnpm exec vite --host 0.0.0.0 --port 8087) &
   mobile_frontend_pid=$!
 }
 

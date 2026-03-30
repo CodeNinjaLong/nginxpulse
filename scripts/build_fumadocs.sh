@@ -38,6 +38,8 @@ ensure_node_deps() {
 
   if [[ ! -d "$DOCS_DIR/node_modules" ]]; then
     install_needed=1
+  elif [[ ! -x "$DOCS_DIR/node_modules/.bin/next" ]]; then
+    install_needed=1
   elif [[ "$DOCS_DIR/package.json" -nt "$DOCS_DIR/node_modules" ]]; then
     install_needed=1
   elif [[ -f "$DOCS_DIR/pnpm-lock.yaml" && "$DOCS_DIR/pnpm-lock.yaml" -nt "$DOCS_DIR/node_modules" ]]; then
@@ -77,7 +79,7 @@ fi
 ensure_node_deps
 
 echo "Building static docs..."
-(cd "$DOCS_DIR" && pnpm run build)
+(cd "$DOCS_DIR" && pnpm exec next build)
 
 if [[ ! -d "$OUT_DIR" ]]; then
   echo "Build output not found: $OUT_DIR" >&2
