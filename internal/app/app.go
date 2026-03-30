@@ -166,12 +166,18 @@ func initRepository() (*store.Repository, error) {
 	logrus.Info("****** 1 初始化数据 ******")
 	repository, err := store.NewRepository()
 	if err != nil {
-		logrus.WithField("error", err).Error("Failed to connect database")
+		logrus.WithFields(logrus.Fields{
+			"config_source": resolveConfigPath(),
+			"data_dir":      resolveDataDir(),
+		}).WithError(err).Error("初始化数据库连接失败")
 		return repository, err
 	}
 
 	if err := repository.Init(); err != nil {
-		logrus.WithField("error", err).Error("Failed to create tables")
+		logrus.WithFields(logrus.Fields{
+			"config_source": resolveConfigPath(),
+			"data_dir":      resolveDataDir(),
+		}).WithError(err).Error("初始化数据库表结构失败")
 		return repository, err
 	}
 

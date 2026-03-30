@@ -1187,6 +1187,10 @@ func SetupRoutes(
 		query, err := statsFactory.BuildQueryFromRequest(statsType, params)
 
 		if err != nil {
+			logrus.WithFields(logrus.Fields{
+				"stats_type": statsType,
+				"params":     params,
+			}).WithError(err).Warn("统计查询参数无效")
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
 			})
@@ -1196,7 +1200,11 @@ func SetupRoutes(
 		// 执行查询
 		result, err := statsFactory.QueryStats(statsType, query)
 		if err != nil {
-			logrus.WithError(err).Errorf("查询统计数据[%s]失败", statsType)
+			logrus.WithFields(logrus.Fields{
+				"stats_type": statsType,
+				"params":     params,
+				"website_id": query.WebsiteID,
+			}).WithError(err).Error("查询统计数据失败")
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": fmt.Sprintf("查询失败: %v", err),
 			})

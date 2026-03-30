@@ -167,13 +167,16 @@ func openPostgres(cfg config.DatabaseConfig) (*sql.DB, error) {
 		if parsed, err := time.ParseDuration(cfg.ConnMaxLifetime); err == nil {
 			db.SetConnMaxLifetime(parsed)
 		} else {
-			logrus.WithError(err).Warn("无效的数据库连接最大生命周期配置，已忽略")
+			logrus.WithFields(logrus.Fields{
+				"conn_max_lifetime": cfg.ConnMaxLifetime,
+			}).WithError(err).Warn("无效的数据库连接最大生命周期配置，已忽略")
 		}
 	}
 
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, err
+		return nil, fmt.Errorf("连接 PostgreSQL 失败(host=%s db=%s user=%s): %w",
+			pgConfig.Host, pgConfig.Database, pgConfig.User, err)
 	}
 
 	return db, nil

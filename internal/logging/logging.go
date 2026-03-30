@@ -65,7 +65,10 @@ func ConfigureLogging() {
 		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			logrus.SetOutput(os.Stdout)
-			logrus.WithError(err).Error("无法打开日志文件,降级到stdout输出")
+			logrus.WithFields(logrus.Fields{
+				"log_path":    logPath,
+				"destination": cfg.System.LogDestination,
+			}).WithError(err).Error("无法打开日志文件，已降级到 stdout 输出")
 			return
 		}
 		logFileHandle = logFile
@@ -110,7 +113,10 @@ func RotateLogFile() error {
 	logrus.SetOutput(logFileHandle)
 
 	if renameErr != nil {
-		logrus.WithError(renameErr).Warn("日志轮转失败但继续使用原文件")
+		logrus.WithFields(logrus.Fields{
+			"log_path":    logPath,
+			"backup_path": backupPath,
+		}).WithError(renameErr).Warn("日志轮转失败，但继续使用原文件")
 	} else {
 		logrus.Info("日志文件已轮转")
 	}

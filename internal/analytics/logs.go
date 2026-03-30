@@ -10,6 +10,7 @@ import (
 	"github.com/likaia/nginxpulse/internal/sqlutil"
 	"github.com/likaia/nginxpulse/internal/store"
 	"github.com/likaia/nginxpulse/internal/timeutil"
+	"github.com/sirupsen/logrus"
 )
 
 // LogEntry 表示单条日志信息
@@ -75,6 +76,26 @@ type LogsStatsManager struct {
 	repo *store.Repository
 }
 
+type logsQueryOptions struct {
+	filter            string
+	timeRange         string
+	timeStart         int64
+	timeEnd           int64
+	statusCode        int
+	statusClass       string
+	excludeInternal   bool
+	excludeSpider     bool
+	excludeForeign    bool
+	ipFilter          string
+	locationFilter    string
+	urlFilter         string
+	pageviewOnly      bool
+	includeNewVisitor bool
+	newVisitorFilter  string
+	newRangeStart     int64
+	newRangeEnd       int64
+}
+
 // NewLogsStatsManager 创建日志查询管理器
 func NewLogsStatsManager(userRepoPtr *store.Repository) *LogsStatsManager {
 	return &LogsStatsManager{
@@ -85,7 +106,7 @@ func NewLogsStatsManager(userRepoPtr *store.Repository) *LogsStatsManager {
 // Query 实现 StatsManager 接口
 func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	result := LogsStats{}
-	const botDeviceLabel = "蜘蛛"
+	queryStartedAt := time.Now()
 	result.IPParsing = ingest.IsIPParsing()
 	result.IPParsingProgress = ingest.GetIPParsingProgress()
 	result.IPParsingEstimatedTotalSeconds = ingest.GetIPParsingEstimatedTotalSeconds()
@@ -268,6 +289,43 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 			return fmt.Sprintf("%s.%s", logAlias, name)
 		}
 	}
+	baseColumn := func(name string) string {
+		return fmt.Sprintf("%s.%s", logAlias, name)
+	}
+	fastPathColumn := func(name string) string {
+		return fmt.Sprintf("base.%s", name)
+	}
+	options := logsQueryOptions{
+		filter:            filter,
+		timeRange:         timeRange,
+		timeStart:         timeStart,
+		timeEnd:           timeEnd,
+		statusCode:        statusCode,
+		statusClass:       statusClass,
+		excludeInternal:   excludeInternal,
+		excludeSpider:     excludeSpider,
+		excludeForeign:    excludeForeign,
+		ipFilter:          ipFilter,
+		locationFilter:    locationFilter,
+		urlFilter:         urlFilter,
+		pageviewOnly:      pageviewOnly,
+		includeNewVisitor: includeNewVisitor,
+		newVisitorFilter:  newVisitorFilter,
+		newRangeStart:     newRangeStart,
+		newRangeEnd:       newRangeEnd,
+	}
+	fullConditions, fullArgs, err := buildLogsConditions(column, options)
+	if err != nil {
+		return result, err
+	}
+	baseConditions, baseArgs, err := buildLogsConditions(baseColumn, options)
+	if err != nil {
+		return result, err
+	}
+	fastPath := canUseFastLogsPath(sortField, options, distinctIP)
+	orderClause := buildLogsOrderClause(column(sortField), sortOrder, fmt.Sprintf("%s.id", logAlias))
+	baseOrderClause := buildLogsOrderClause(baseColumn(sortField), sortOrder, baseColumn("id"))
+	fastPathOrderClause := buildLogsOrderClause(fastPathColumn(sortField), sortOrder, fastPathColumn("id"))
 
 	// 构建查询语句
 	var queryBuilder strings.Builder
@@ -286,7 +344,79 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	selectColumnsRaw := strings.Join(selectFields, ", ")
 
 	if !distinctIP {
-		if includeNewVisitor {
+		if fastPath {
+			baseSelectColumns := strings.Join([]string{
+				baseColumn("id"),
+				baseColumn("ip_id"),
+				baseColumn("timestamp"),
+				baseColumn("method"),
+				baseColumn("url_id"),
+				baseColumn("status_code"),
+				baseColumn("bytes_sent"),
+				baseColumn("request_length"),
+				baseColumn("request_time_ms"),
+				baseColumn("upstream_response_time_ms"),
+				baseColumn("upstream_addr"),
+				baseColumn("host"),
+				baseColumn("request_id"),
+				baseColumn("referer_id"),
+				baseColumn("ua_id"),
+				baseColumn("location_id"),
+				baseColumn("pageview_flag"),
+			}, ", ")
+			queryBuilder.WriteString(fmt.Sprintf(`
+        WITH base AS (
+            SELECT
+                %s
+            FROM "%s" %s`,
+				baseSelectColumns, tableName, logAlias))
+			if len(baseConditions) > 0 {
+				queryBuilder.WriteString(" WHERE ")
+				queryBuilder.WriteString(strings.Join(baseConditions, " AND "))
+			}
+			queryBuilder.WriteString(fmt.Sprintf(" ORDER BY %s", baseOrderClause))
+			queryBuilder.WriteString(" LIMIT ? OFFSET ?")
+			queryBuilder.WriteString(fmt.Sprintf(`
+        )
+        SELECT
+            %s
+        FROM base
+        JOIN "%s_dim_ip" ip ON ip.id = base.ip_id
+        JOIN "%s_dim_url" u ON u.id = base.url_id
+        JOIN "%s_dim_referer" r ON r.id = base.referer_id
+        JOIN "%s_dim_ua" ua ON ua.id = base.ua_id
+        JOIN "%s_dim_location" loc ON loc.id = base.location_id`,
+				strings.Join([]string{
+					"base.id AS id",
+					"ip.ip AS ip",
+					"base.timestamp AS timestamp",
+					"base.method AS method",
+					"u.url AS url",
+					"base.status_code AS status_code",
+					"base.bytes_sent AS bytes_sent",
+					"base.request_length AS request_length",
+					"base.request_time_ms AS request_time_ms",
+					"base.upstream_response_time_ms AS upstream_response_time_ms",
+					"base.upstream_addr AS upstream_addr",
+					"base.host AS host",
+					"base.request_id AS request_id",
+					"r.referer AS referer",
+					"ua.browser AS user_browser",
+					"ua.os AS user_os",
+					"ua.device AS user_device",
+					"loc.domestic AS domestic_location",
+					"loc.global AS global_location",
+					"base.pageview_flag AS pageview_flag",
+				}, ", "),
+				query.WebsiteID,
+				query.WebsiteID,
+				query.WebsiteID,
+				query.WebsiteID,
+				query.WebsiteID,
+			))
+			queryBuilder.WriteString(fmt.Sprintf(" ORDER BY %s", fastPathOrderClause))
+			args = append(args, baseArgs...)
+		} else if includeNewVisitor {
 			queryBuilder.WriteString(fmt.Sprintf(`
         SELECT
             %s,
@@ -296,6 +426,7 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
         %s`,
 				selectColumnsWithAlias, tableName, logAlias, joinClause, firstSeenJoin))
 			args = append(args, newRangeStart, newRangeEnd)
+			args = append(args, fullArgs...)
 		} else {
 			queryBuilder.WriteString(fmt.Sprintf(`
         SELECT
@@ -303,86 +434,7 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
         FROM "%s" %s
         %s`,
 				selectColumnsWithAlias, tableName, logAlias, joinClause))
-		}
-	}
-
-	// 添加过滤条件
-	conditions := make([]string, 0, 2)
-	if filter != "" {
-		conditions = append(conditions, fmt.Sprintf("(%s LIKE ? OR %s LIKE ? OR %s LIKE ? OR %s LIKE ?)",
-			column("url"), column("ip"), column("referer"), column("domestic_location")))
-		filterArg := "%" + filter + "%"
-		args = append(args, filterArg, filterArg, filterArg, filterArg)
-	}
-	if timeRange != "" {
-		startTime, endTime, err := timeutil.TimePeriod(timeRange)
-		if err != nil {
-			return result, fmt.Errorf("解析时间范围失败: %v", err)
-		}
-		conditions = append(conditions, fmt.Sprintf("%s >= ? AND %s < ?", column("timestamp"), column("timestamp")))
-		args = append(args, startTime.Unix(), endTime.Unix())
-	}
-	if timeStart > 0 {
-		conditions = append(conditions, fmt.Sprintf("%s >= ?", column("timestamp")))
-		args = append(args, timeStart)
-	}
-	if timeEnd > 0 {
-		conditions = append(conditions, fmt.Sprintf("%s <= ?", column("timestamp")))
-		args = append(args, timeEnd)
-	}
-	if ipFilter != "" {
-		conditions = append(conditions, fmt.Sprintf("%s LIKE ?", column("ip")))
-		args = append(args, "%"+ipFilter+"%")
-	}
-	if locationFilter != "" {
-		conditions = append(conditions, fmt.Sprintf("(%s LIKE ? OR %s LIKE ?)",
-			column("domestic_location"), column("global_location")))
-		locationArg := "%" + locationFilter + "%"
-		args = append(args, locationArg, locationArg)
-	}
-	if urlFilter != "" {
-		conditions = append(conditions, fmt.Sprintf("%s LIKE ?", column("url")))
-		args = append(args, "%"+urlFilter+"%")
-	}
-	if statusCode > 0 {
-		conditions = append(conditions, fmt.Sprintf("%s = ?", column("status_code")))
-		args = append(args, statusCode)
-	} else if statusClass != "" {
-		classLower := strings.ToLower(statusClass)
-		switch classLower {
-		case "2xx":
-			conditions = append(conditions, fmt.Sprintf("%s >= 200 AND %s < 300", column("status_code"), column("status_code")))
-		case "3xx":
-			conditions = append(conditions, fmt.Sprintf("%s >= 300 AND %s < 400", column("status_code"), column("status_code")))
-		case "4xx":
-			conditions = append(conditions, fmt.Sprintf("%s >= 400 AND %s < 500", column("status_code"), column("status_code")))
-		case "5xx":
-			conditions = append(conditions, fmt.Sprintf("%s >= 500 AND %s < 600", column("status_code"), column("status_code")))
-		}
-	}
-	if excludeInternal {
-		internalCondition, internalArgs := buildInternalIPCondition(column("ip"))
-		conditions = append(conditions, fmt.Sprintf("NOT %s", internalCondition))
-		args = append(args, internalArgs...)
-	}
-	if excludeSpider {
-		conditions = append(conditions, fmt.Sprintf("%s <> ?", column("user_device")))
-		args = append(args, botDeviceLabel)
-	}
-	if excludeForeign {
-		conditions = append(conditions, fmt.Sprintf("(%s = ? OR LOWER(%s) = ?)", column("global_location"), column("global_location")))
-		args = append(args, "中国", "china")
-	}
-	if pageviewOnly {
-		conditions = append(conditions, fmt.Sprintf("%s = 1", column("pageview_flag")))
-	}
-	if includeNewVisitor {
-		if newVisitorFilter == "new" {
-			conditions = append(conditions, "fs.first_ts >= ? AND fs.first_ts < ?")
-			args = append(args, newRangeStart, newRangeEnd)
-		} else if newVisitorFilter == "returning" {
-			conditions = append(conditions, "fs.first_ts < ?")
-			args = append(args, newRangeStart)
+			args = append(args, fullArgs...)
 		}
 	}
 	if distinctIP {
@@ -393,13 +445,13 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
             SELECT
                 %s,
                 CASE WHEN fs.first_ts >= ? AND fs.first_ts < ? THEN 1 ELSE 0 END AS is_new_visitor
-            FROM "%s" %s
-            %s
-            %s`,
+        FROM "%s" %s
+        %s
+        %s`,
 				selectColumnsWithAlias, tableName, logAlias, joinClause, firstSeenJoin))
-			if len(conditions) > 0 {
+			if len(fullConditions) > 0 {
 				baseQuery.WriteString(" WHERE ")
-				baseQuery.WriteString(strings.Join(conditions, " AND "))
+				baseQuery.WriteString(strings.Join(fullConditions, " AND "))
 			}
 			baseQuery.WriteString("\n        )")
 		} else {
@@ -410,9 +462,9 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
             FROM "%s" %s
             %s`,
 				selectColumnsWithAlias, tableName, logAlias, joinClause))
-			if len(conditions) > 0 {
+			if len(fullConditions) > 0 {
 				baseQuery.WriteString(" WHERE ")
-				baseQuery.WriteString(strings.Join(conditions, " AND "))
+				baseQuery.WriteString(strings.Join(fullConditions, " AND "))
 			}
 			baseQuery.WriteString("\n        )")
 		}
@@ -428,34 +480,36 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
             FROM base
         )
         WHERE rn = 1`, outerSelect))
-		queryBuilder.WriteString(fmt.Sprintf(" ORDER BY %s %s", sortField, sortOrder))
+		queryBuilder.WriteString(fmt.Sprintf(" ORDER BY %s", buildLogsOrderClause(sortField, sortOrder, "id")))
 		queryBuilder.WriteString(" LIMIT ? OFFSET ?")
 		if includeNewVisitor {
-			args = append([]interface{}{newRangeStart, newRangeEnd}, args...)
+			args = append([]interface{}{newRangeStart, newRangeEnd}, fullArgs...)
+		} else {
+			args = append(args, fullArgs...)
 		}
 		args = append(args, pageSize, offset)
-	} else {
-		if len(conditions) > 0 {
+	} else if !fastPath {
+		if len(fullConditions) > 0 {
 			queryBuilder.WriteString(" WHERE ")
-			queryBuilder.WriteString(strings.Join(conditions, " AND "))
+			queryBuilder.WriteString(strings.Join(fullConditions, " AND "))
 		}
 
-		// 添加排序
-		orderField := column(sortField)
-		queryBuilder.WriteString(fmt.Sprintf(" ORDER BY %s %s", orderField, sortOrder))
+		queryBuilder.WriteString(fmt.Sprintf(" ORDER BY %s", orderClause))
 
-		// 添加分页
 		queryBuilder.WriteString(" LIMIT ? OFFSET ?")
+		args = append(args, pageSize, offset)
+	} else {
 		args = append(args, pageSize, offset)
 	}
 
-	// 执行查询
+	selectStartedAt := time.Now()
 	queryStr := sqlutil.ReplacePlaceholders(queryBuilder.String())
 	rows, err := m.repo.GetDB().Query(queryStr, args...)
 	if err != nil {
 		return result, fmt.Errorf("查询日志失败: %v", err)
 	}
 	defer rows.Close()
+	var selectDuration time.Duration
 
 	// 处理结果
 	logs := make([]LogEntry, 0)
@@ -492,11 +546,12 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 		logs = append(logs, log)
 	}
+	selectDuration = time.Since(selectStartedAt)
 
 	// 查询总记录数
 	var countQuery strings.Builder
-	needNewVisitorJoin := includeNewVisitor && newVisitorFilter != "all"
-	if needNewVisitorJoin {
+	countNeedsJoin := needsLogsJoinForFilters(options) || (includeNewVisitor && newVisitorFilter != "all")
+	if countNeedsJoin {
 		countQuery.WriteString(fmt.Sprintf(`
         SELECT %s
         FROM "%s" %s
@@ -504,87 +559,14 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
         %s`,
 			countSelect(distinctIP), tableName, logAlias, joinClause, firstSeenJoin))
 	} else {
-		countQuery.WriteString(fmt.Sprintf(`SELECT %s FROM "%s" %s %s`, countSelect(distinctIP), tableName, logAlias, joinClause))
+		countQuery.WriteString(fmt.Sprintf(`SELECT %s FROM "%s" %s`, countSelect(distinctIP), tableName, logAlias))
 	}
 
-	var countArgs []interface{}
-	countConditions := make([]string, 0, 2)
-	if filter != "" {
-		countConditions = append(countConditions, fmt.Sprintf("(%s LIKE ? OR %s LIKE ? OR %s LIKE ? OR %s LIKE ?)",
-			column("url"), column("ip"), column("referer"), column("domestic_location")))
-		filterArg := "%" + filter + "%"
-		countArgs = append(countArgs, filterArg, filterArg, filterArg, filterArg)
-	}
-	if timeRange != "" {
-		startTime, endTime, err := timeutil.TimePeriod(timeRange)
-		if err != nil {
-			return result, fmt.Errorf("解析时间范围失败: %v", err)
-		}
-		countConditions = append(countConditions, fmt.Sprintf("%s >= ? AND %s < ?", column("timestamp"), column("timestamp")))
-		countArgs = append(countArgs, startTime.Unix(), endTime.Unix())
-	}
-	if timeStart > 0 {
-		countConditions = append(countConditions, fmt.Sprintf("%s >= ?", column("timestamp")))
-		countArgs = append(countArgs, timeStart)
-	}
-	if timeEnd > 0 {
-		countConditions = append(countConditions, fmt.Sprintf("%s <= ?", column("timestamp")))
-		countArgs = append(countArgs, timeEnd)
-	}
-	if ipFilter != "" {
-		countConditions = append(countConditions, fmt.Sprintf("%s LIKE ?", column("ip")))
-		countArgs = append(countArgs, "%"+ipFilter+"%")
-	}
-	if locationFilter != "" {
-		countConditions = append(countConditions, fmt.Sprintf("(%s LIKE ? OR %s LIKE ?)",
-			column("domestic_location"), column("global_location")))
-		locationArg := "%" + locationFilter + "%"
-		countArgs = append(countArgs, locationArg, locationArg)
-	}
-	if urlFilter != "" {
-		countConditions = append(countConditions, fmt.Sprintf("%s LIKE ?", column("url")))
-		countArgs = append(countArgs, "%"+urlFilter+"%")
-	}
-	if statusCode > 0 {
-		countConditions = append(countConditions, fmt.Sprintf("%s = ?", column("status_code")))
-		countArgs = append(countArgs, statusCode)
-	} else if statusClass != "" {
-		classLower := strings.ToLower(statusClass)
-		switch classLower {
-		case "2xx":
-			countConditions = append(countConditions, fmt.Sprintf("%s >= 200 AND %s < 300", column("status_code"), column("status_code")))
-		case "3xx":
-			countConditions = append(countConditions, fmt.Sprintf("%s >= 300 AND %s < 400", column("status_code"), column("status_code")))
-		case "4xx":
-			countConditions = append(countConditions, fmt.Sprintf("%s >= 400 AND %s < 500", column("status_code"), column("status_code")))
-		case "5xx":
-			countConditions = append(countConditions, fmt.Sprintf("%s >= 500 AND %s < 600", column("status_code"), column("status_code")))
-		}
-	}
-	if excludeInternal {
-		internalCondition, internalArgs := buildInternalIPCondition(column("ip"))
-		countConditions = append(countConditions, fmt.Sprintf("NOT %s", internalCondition))
-		countArgs = append(countArgs, internalArgs...)
-	}
-	if excludeSpider {
-		countConditions = append(countConditions, fmt.Sprintf("%s <> ?", column("user_device")))
-		countArgs = append(countArgs, botDeviceLabel)
-	}
-	if excludeForeign {
-		countConditions = append(countConditions, fmt.Sprintf("(%s = ? OR LOWER(%s) = ?)", column("global_location"), column("global_location")))
-		countArgs = append(countArgs, "中国", "china")
-	}
-	if pageviewOnly {
-		countConditions = append(countConditions, fmt.Sprintf("%s = 1", column("pageview_flag")))
-	}
-	if needNewVisitorJoin {
-		if newVisitorFilter == "new" {
-			countConditions = append(countConditions, "fs.first_ts >= ? AND fs.first_ts < ?")
-			countArgs = append(countArgs, newRangeStart, newRangeEnd)
-		} else if newVisitorFilter == "returning" {
-			countConditions = append(countConditions, "fs.first_ts < ?")
-			countArgs = append(countArgs, newRangeStart)
-		}
+	countConditions := fullConditions
+	countArgs := fullArgs
+	if !countNeedsJoin {
+		countConditions = baseConditions
+		countArgs = baseArgs
 	}
 	if len(countConditions) > 0 {
 		countQuery.WriteString(" WHERE ")
@@ -592,11 +574,13 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	}
 
 	var total int
+	countStartedAt := time.Now()
 	countQueryStr := sqlutil.ReplacePlaceholders(countQuery.String())
 	err = m.repo.GetDB().QueryRow(countQueryStr, countArgs...).Scan(&total)
 	if err != nil {
 		return result, fmt.Errorf("获取日志总数失败: %v", err)
 	}
+	countDuration := time.Since(countStartedAt)
 
 	// 设置返回结果
 	result.Logs = logs
@@ -604,6 +588,7 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	result.Pagination.Page = page
 	result.Pagination.PageSize = pageSize
 	result.Pagination.Pages = (total + pageSize - 1) / pageSize
+	logSlowLogsQuery(query.WebsiteID, page, pageSize, sortField, sortOrder, options, distinctIP, fastPath, !countNeedsJoin, len(logs), total, selectDuration, countDuration, time.Since(queryStartedAt))
 
 	return result, nil
 }
@@ -613,6 +598,181 @@ func countSelect(distinctIP bool) string {
 		return "COUNT(DISTINCT l.ip_id)"
 	}
 	return "COUNT(*)"
+}
+
+func buildLogsConditions(column func(string) string, opts logsQueryOptions) ([]string, []interface{}, error) {
+	const botDeviceLabel = "蜘蛛"
+	conditions := make([]string, 0, 8)
+	args := make([]interface{}, 0, 8)
+
+	if opts.filter != "" {
+		conditions = append(conditions, fmt.Sprintf("(%s LIKE ? OR %s LIKE ? OR %s LIKE ? OR %s LIKE ?)",
+			column("url"), column("ip"), column("referer"), column("domestic_location")))
+		filterArg := "%" + opts.filter + "%"
+		args = append(args, filterArg, filterArg, filterArg, filterArg)
+	}
+	if opts.timeRange != "" {
+		startTime, endTime, err := timeutil.TimePeriod(opts.timeRange)
+		if err != nil {
+			return nil, nil, fmt.Errorf("解析时间范围失败: %v", err)
+		}
+		conditions = append(conditions, fmt.Sprintf("%s >= ? AND %s < ?", column("timestamp"), column("timestamp")))
+		args = append(args, startTime.Unix(), endTime.Unix())
+	}
+	if opts.timeStart > 0 {
+		conditions = append(conditions, fmt.Sprintf("%s >= ?", column("timestamp")))
+		args = append(args, opts.timeStart)
+	}
+	if opts.timeEnd > 0 {
+		conditions = append(conditions, fmt.Sprintf("%s <= ?", column("timestamp")))
+		args = append(args, opts.timeEnd)
+	}
+	if opts.ipFilter != "" {
+		conditions = append(conditions, fmt.Sprintf("%s LIKE ?", column("ip")))
+		args = append(args, "%"+opts.ipFilter+"%")
+	}
+	if opts.locationFilter != "" {
+		conditions = append(conditions, fmt.Sprintf("(%s LIKE ? OR %s LIKE ?)",
+			column("domestic_location"), column("global_location")))
+		locationArg := "%" + opts.locationFilter + "%"
+		args = append(args, locationArg, locationArg)
+	}
+	if opts.urlFilter != "" {
+		conditions = append(conditions, fmt.Sprintf("%s LIKE ?", column("url")))
+		args = append(args, "%"+opts.urlFilter+"%")
+	}
+	if opts.statusCode > 0 {
+		conditions = append(conditions, fmt.Sprintf("%s = ?", column("status_code")))
+		args = append(args, opts.statusCode)
+	} else if opts.statusClass != "" {
+		switch strings.ToLower(opts.statusClass) {
+		case "2xx":
+			conditions = append(conditions, fmt.Sprintf("%s >= 200 AND %s < 300", column("status_code"), column("status_code")))
+		case "3xx":
+			conditions = append(conditions, fmt.Sprintf("%s >= 300 AND %s < 400", column("status_code"), column("status_code")))
+		case "4xx":
+			conditions = append(conditions, fmt.Sprintf("%s >= 400 AND %s < 500", column("status_code"), column("status_code")))
+		case "5xx":
+			conditions = append(conditions, fmt.Sprintf("%s >= 500 AND %s < 600", column("status_code"), column("status_code")))
+		}
+	}
+	if opts.excludeInternal {
+		internalCondition, internalArgs := buildInternalIPCondition(column("ip"))
+		conditions = append(conditions, fmt.Sprintf("NOT %s", internalCondition))
+		args = append(args, internalArgs...)
+	}
+	if opts.excludeSpider {
+		conditions = append(conditions, fmt.Sprintf("%s <> ?", column("user_device")))
+		args = append(args, botDeviceLabel)
+	}
+	if opts.excludeForeign {
+		conditions = append(conditions, fmt.Sprintf("(%s = ? OR LOWER(%s) = ?)", column("global_location"), column("global_location")))
+		args = append(args, "中国", "china")
+	}
+	if opts.pageviewOnly {
+		conditions = append(conditions, fmt.Sprintf("%s = 1", column("pageview_flag")))
+	}
+	if opts.includeNewVisitor {
+		if opts.newVisitorFilter == "new" {
+			conditions = append(conditions, "fs.first_ts >= ? AND fs.first_ts < ?")
+			args = append(args, opts.newRangeStart, opts.newRangeEnd)
+		} else if opts.newVisitorFilter == "returning" {
+			conditions = append(conditions, "fs.first_ts < ?")
+			args = append(args, opts.newRangeStart)
+		}
+	}
+
+	return conditions, args, nil
+}
+
+func needsLogsJoinForFilters(opts logsQueryOptions) bool {
+	return opts.filter != "" ||
+		opts.ipFilter != "" ||
+		opts.locationFilter != "" ||
+		opts.urlFilter != "" ||
+		opts.excludeInternal ||
+		opts.excludeSpider ||
+		opts.excludeForeign
+}
+
+func canUseFastLogsPath(sortField string, opts logsQueryOptions, distinctIP bool) bool {
+	if distinctIP || opts.includeNewVisitor || needsLogsJoinForFilters(opts) {
+		return false
+	}
+	switch sortField {
+	case "timestamp", "status_code", "bytes_sent", "request_length", "request_time_ms", "upstream_response_time_ms":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildLogsOrderClause(primary, sortOrder, secondary string) string {
+	if secondary == "" || secondary == primary {
+		return fmt.Sprintf("%s %s", primary, sortOrder)
+	}
+	return fmt.Sprintf("%s %s, %s %s", primary, sortOrder, secondary, sortOrder)
+}
+
+func logSlowLogsQuery(
+	websiteID string,
+	page int,
+	pageSize int,
+	sortField string,
+	sortOrder string,
+	opts logsQueryOptions,
+	distinctIP bool,
+	fastPath bool,
+	countFastPath bool,
+	rows int,
+	total int,
+	selectDuration time.Duration,
+	countDuration time.Duration,
+	totalDuration time.Duration,
+) {
+	if totalDuration <= 300*time.Millisecond {
+		return
+	}
+
+	fields := logrus.Fields{
+		"website_id":       websiteID,
+		"page":             page,
+		"page_size":        pageSize,
+		"sort_field":       sortField,
+		"sort_order":       sortOrder,
+		"distinct_ip":      distinctIP,
+		"fast_path":        fastPath,
+		"count_fast_path":  countFastPath,
+		"rows":             rows,
+		"total":            total,
+		"select_ms":        selectDuration.Milliseconds(),
+		"count_ms":         countDuration.Milliseconds(),
+		"total_ms":         totalDuration.Milliseconds(),
+		"time_range":       opts.timeRange,
+		"time_start":       opts.timeStart,
+		"time_end":         opts.timeEnd,
+		"status_code":      opts.statusCode,
+		"status_class":     opts.statusClass,
+		"pageview_only":    opts.pageviewOnly,
+		"exclude_internal": opts.excludeInternal,
+		"exclude_spider":   opts.excludeSpider,
+		"exclude_foreign":  opts.excludeForeign,
+		"new_visitor":      opts.newVisitorFilter,
+	}
+	if opts.filter != "" {
+		fields["filter"] = opts.filter
+	}
+	if opts.ipFilter != "" {
+		fields["ip_filter"] = opts.ipFilter
+	}
+	if opts.locationFilter != "" {
+		fields["location_filter"] = opts.locationFilter
+	}
+	if opts.urlFilter != "" {
+		fields["url_filter"] = opts.urlFilter
+	}
+
+	logrus.WithFields(fields).Warn("日志列表查询耗时较高")
 }
 
 func parseTimeFilter(value string) (int64, error) {

@@ -65,20 +65,36 @@ func buildRouter(statsFactory *analytics.StatsFactory, logParser *ingest.LogPars
 func requestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
+		rawQuery := c.Request.URL.RawQuery
 		start := time.Now()
 		c.Next()
 		duration := time.Since(start)
 		status := c.Writer.Status()
+		fields := logrus.Fields{
+			"method":      c.Request.Method,
+			"path":        path,
+			"raw_query":   rawQuery,
+			"client_ip":   c.ClientIP(),
+			"status":      status,
+			"duration_ms": duration.Milliseconds(),
+		}
+		if referer := c.Request.Referer(); referer != "" {
+			fields["referer"] = referer
+		}
+		if ua := c.Request.UserAgent(); ua != "" {
+			fields["user_agent"] = ua
+		}
+		if websiteID := c.Query("id"); websiteID != "" {
+			fields["website_id"] = websiteID
+		}
 
 		if status >= 400 {
-			logrus.Warnf("HTTP %d %s %s %s %v",
-				status, c.Request.Method, path, c.ClientIP(), duration)
+			logrus.WithFields(fields).Warn("HTTP 请求返回错误状态")
 			return
 		}
 
 		if strings.HasPrefix(path, "/api/") && duration > 100*time.Millisecond {
-			logrus.Warnf("高延迟 %s %s %d %s %v",
-				c.Request.Method, path, status, c.ClientIP(), duration)
+			logrus.WithFields(fields).Warn("高延迟 API 请求")
 		}
 	}
 }
