@@ -16,9 +16,11 @@ var (
 )
 
 const (
-	DataDir            = "./var/nginxpulse_data"
-	ConfigFile         = "./configs/nginxpulse_config.json"
-	DefaultIPGeoAPIURL = "http://ip-api.com/batch"
+	DataDir                          = "./var/nginxpulse_data"
+	ConfigFile                       = "./configs/nginxpulse_config.json"
+	DefaultIPGeoAPIURL               = "http://ip-api.com/batch"
+	DefaultBackfillMaxDurationPerRun = 8 * time.Second
+	DefaultBackfillMaxBytesPerRun    = int64(32 * 1024 * 1024)
 )
 
 type Config struct {
@@ -94,20 +96,22 @@ type WhitelistConfig struct {
 }
 
 type SystemConfig struct {
-	LogDestination      string           `json:"logDestination"`
-	TaskInterval        string           `json:"taskInterval"` // "5m" "25s"
-	HTTPSourceTimeout   string           `json:"httpSourceTimeout,omitempty"`
-	LogRetentionDays    int              `json:"logRetentionDays"`
-	ParseBatchSize      int              `json:"parseBatchSize"`
-	IPGeoCacheLimit     int              `json:"ipGeoCacheLimit"`
-	IPGeoAPIURL         string           `json:"ipGeoApiUrl"`
-	AlertPush           *AlertPushConfig `json:"alertPush,omitempty"`
-	DemoMode            bool             `json:"demoMode"`
-	AccessKeys          []string         `json:"accessKeys"`
-	AccessKeyExpireDays int              `json:"accessKeyExpireDays"`
-	Language            string           `json:"language"`
-	WebBasePath         string           `json:"webBasePath,omitempty"`
-	MobilePWAEnabled    bool             `json:"mobilePwaEnabled"`
+	LogDestination            string           `json:"logDestination"`
+	TaskInterval              string           `json:"taskInterval"` // "5m" "25s"
+	BackfillMaxDurationPerRun string           `json:"backfillMaxDurationPerRun,omitempty"`
+	BackfillMaxBytesPerRun    int64            `json:"backfillMaxBytesPerRun,omitempty"`
+	HTTPSourceTimeout         string           `json:"httpSourceTimeout,omitempty"`
+	LogRetentionDays          int              `json:"logRetentionDays"`
+	ParseBatchSize            int              `json:"parseBatchSize"`
+	IPGeoCacheLimit           int              `json:"ipGeoCacheLimit"`
+	IPGeoAPIURL               string           `json:"ipGeoApiUrl"`
+	AlertPush                 *AlertPushConfig `json:"alertPush,omitempty"`
+	DemoMode                  bool             `json:"demoMode"`
+	AccessKeys                []string         `json:"accessKeys"`
+	AccessKeyExpireDays       int              `json:"accessKeyExpireDays"`
+	Language                  string           `json:"language"`
+	WebBasePath               string           `json:"webBasePath,omitempty"`
+	MobilePWAEnabled          bool             `json:"mobilePwaEnabled"`
 }
 
 type AlertPushConfig struct {
@@ -224,6 +228,28 @@ func GetHTTPSourceTimeout() time.Duration {
 		return 2 * time.Minute
 	}
 	return timeout
+}
+
+func GetBackfillMaxDurationPerRun() time.Duration {
+	cfg := ReadConfig()
+	value := strings.TrimSpace(cfg.System.BackfillMaxDurationPerRun)
+	if value == "" {
+		return DefaultBackfillMaxDurationPerRun
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return DefaultBackfillMaxDurationPerRun
+	}
+	return duration
+}
+
+func GetBackfillMaxBytesPerRun() int64 {
+	cfg := ReadConfig()
+	value := cfg.System.BackfillMaxBytesPerRun
+	if value <= 0 {
+		return DefaultBackfillMaxBytesPerRun
+	}
+	return value
 }
 
 // ParseInterval 解析间隔配置字符串，支持分钟(m)和秒(s)单位

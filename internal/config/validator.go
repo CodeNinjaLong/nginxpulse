@@ -161,6 +161,17 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 	if cfg.System.ParseBatchSize <= 0 {
 		addError("system.parseBatchSize", "parseBatchSize 必须大于 0")
 	}
+	if strings.TrimSpace(cfg.System.BackfillMaxDurationPerRun) != "" {
+		duration, err := time.ParseDuration(strings.TrimSpace(cfg.System.BackfillMaxDurationPerRun))
+		if err != nil {
+			addError("system.backfillMaxDurationPerRun", "backfillMaxDurationPerRun 格式无效，示例：8s、30s")
+		} else if duration <= 0 {
+			addError("system.backfillMaxDurationPerRun", "backfillMaxDurationPerRun 必须大于 0")
+		}
+	}
+	if cfg.System.BackfillMaxBytesPerRun <= 0 {
+		addError("system.backfillMaxBytesPerRun", "backfillMaxBytesPerRun 必须大于 0")
+	}
 	if cfg.System.IPGeoCacheLimit <= 0 {
 		addError("system.ipGeoCacheLimit", "ipGeoCacheLimit 必须大于 0")
 	}

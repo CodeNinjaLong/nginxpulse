@@ -343,16 +343,41 @@
                 <div class="setup-field">
                   <label class="setup-label">{{ t('setup.fields.taskInterval') }}</label>
                   <input v-model.trim="systemDraft.taskInterval" class="setup-input" type="text" />
+                  <div class="setup-hint">{{ t('setup.hints.taskInterval') }}</div>
                 </div>
                 <div class="setup-field">
-                  <label class="setup-label">{{ t('setup.fields.logRetentionDays') }}</label>
-                  <input v-model.trim="systemDraft.logRetentionDays" class="setup-input" type="number" min="1" />
+                  <label class="setup-label">{{ t('setup.fields.backfillMaxDurationPerRun') }}</label>
+                  <input
+                    v-model.trim="systemDraft.backfillMaxDurationPerRun"
+                    class="setup-input"
+                    type="text"
+                    :placeholder="t('setup.placeholders.backfillMaxDurationPerRun')"
+                  />
+                  <div class="setup-hint">{{ t('setup.hints.backfillMaxDurationPerRun') }}</div>
                 </div>
               </div>
               <div class="setup-field-grid">
                 <div class="setup-field">
                   <label class="setup-label">{{ t('setup.fields.parseBatchSize') }}</label>
                   <input v-model.trim="systemDraft.parseBatchSize" class="setup-input" type="number" min="1" />
+                  <div class="setup-hint">{{ t('setup.hints.parseBatchSize') }}</div>
+                </div>
+                <div class="setup-field">
+                  <label class="setup-label">{{ t('setup.fields.backfillMaxBytesPerRun') }}</label>
+                  <input
+                    v-model.trim="systemDraft.backfillMaxBytesPerRun"
+                    class="setup-input"
+                    type="number"
+                    min="1"
+                    :placeholder="t('setup.placeholders.backfillMaxBytesPerRun')"
+                  />
+                  <div class="setup-hint">{{ t('setup.hints.backfillMaxBytesPerRun') }}</div>
+                </div>
+              </div>
+              <div class="setup-field-grid">
+                <div class="setup-field">
+                  <label class="setup-label">{{ t('setup.fields.logRetentionDays') }}</label>
+                  <input v-model.trim="systemDraft.logRetentionDays" class="setup-input" type="number" min="1" />
                 </div>
                 <div class="setup-field">
                   <label class="setup-label">{{ t('setup.fields.ipGeoCacheLimit') }}</label>
@@ -798,6 +823,8 @@ const databaseDraft = reactive({
 const systemDraft = reactive({
   logDestination: 'file',
   taskInterval: '1m',
+  backfillMaxDurationPerRun: '8s',
+  backfillMaxBytesPerRun: String(32 * 1024 * 1024),
   httpSourceTimeout: '2m',
   logRetentionDays: '30',
   parseBatchSize: '100',
@@ -1428,6 +1455,8 @@ function buildConfig(collectErrors = true): { config: ConfigPayload; errors: Fie
     system: {
       logDestination: systemDraft.logDestination.trim(),
       taskInterval: systemDraft.taskInterval.trim(),
+      backfillMaxDurationPerRun: systemDraft.backfillMaxDurationPerRun.trim(),
+      backfillMaxBytesPerRun: parseOptionalInt(systemDraft.backfillMaxBytesPerRun, 'system.backfillMaxBytesPerRun', errors, false),
       httpSourceTimeout: systemDraft.httpSourceTimeout.trim(),
       logRetentionDays: parseOptionalInt(systemDraft.logRetentionDays, 'system.logRetentionDays', errors, false),
       parseBatchSize: parseOptionalInt(systemDraft.parseBatchSize, 'system.parseBatchSize', errors, false),
@@ -1680,6 +1709,8 @@ function hydrateDraft(config: ConfigPayload) {
 
   systemDraft.logDestination = config.system?.logDestination || 'file';
   systemDraft.taskInterval = config.system?.taskInterval || '1m';
+  systemDraft.backfillMaxDurationPerRun = config.system?.backfillMaxDurationPerRun || '8s';
+  systemDraft.backfillMaxBytesPerRun = String(config.system?.backfillMaxBytesPerRun ?? 32 * 1024 * 1024);
   systemDraft.httpSourceTimeout = config.system?.httpSourceTimeout || '2m';
   systemDraft.logRetentionDays = String(config.system?.logRetentionDays ?? 30);
   systemDraft.parseBatchSize = String(config.system?.parseBatchSize ?? 100);

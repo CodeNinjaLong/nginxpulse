@@ -55,6 +55,8 @@ export interface WebsiteConfig {
 export interface SystemConfig {
   logDestination?: string;
   taskInterval?: string;
+  backfillMaxDurationPerRun?: string;
+  backfillMaxBytesPerRun?: number;
   httpSourceTimeout?: string;
   logRetentionDays?: number;
   parseBatchSize?: number;

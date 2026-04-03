@@ -10,30 +10,32 @@ import (
 )
 
 const (
-	envConfigJSON          = "CONFIG_JSON"
-	envWebsites            = "WEBSITES"
-	envLogDestination      = "LOG_DEST"
-	envTaskInterval        = "TASK_INTERVAL"
-	envHTTPSourceTimeout   = "HTTP_SOURCE_TIMEOUT"
-	envLogRetentionDays    = "LOG_RETENTION_DAYS"
-	envLogParseBatchSize   = "LOG_PARSE_BATCH_SIZE"
-	envServerPort          = "SERVER_PORT"
-	envPVStatusCodes       = "PV_STATUS_CODES"
-	envPVExcludePatterns   = "PV_EXCLUDE_PATTERNS"
-	envPVExcludeIPs        = "PV_EXCLUDE_IPS"
-	envDemoMode            = "DEMO_MODE"
-	envAccessKeys          = "ACCESS_KEYS"
-	envAccessKeyExpireDays = "ACCESS_KEY_EXPIRE_DAYS"
-	envLanguage            = "APP_LANGUAGE"
-	envWebBasePath         = "WEB_BASE_PATH"
-	envMobilePWAEnabled    = "MOBILE_PWA_ENABLED"
-	envIPGeoCacheLimit     = "IP_GEO_CACHE_LIMIT"
-	envIPGeoAPIURL         = "IP_GEO_API_URL"
-	envDBDriver            = "DB_DRIVER"
-	envDBDSN               = "DB_DSN"
-	envDBMaxOpenConns      = "DB_MAX_OPEN_CONNS"
-	envDBMaxIdleConns      = "DB_MAX_IDLE_CONNS"
-	envDBConnMaxLifetime   = "DB_CONN_MAX_LIFETIME"
+	envConfigJSON                = "CONFIG_JSON"
+	envWebsites                  = "WEBSITES"
+	envLogDestination            = "LOG_DEST"
+	envTaskInterval              = "TASK_INTERVAL"
+	envBackfillMaxDurationPerRun = "BACKFILL_MAX_DURATION_PER_RUN"
+	envBackfillMaxBytesPerRun    = "BACKFILL_MAX_BYTES_PER_RUN"
+	envHTTPSourceTimeout         = "HTTP_SOURCE_TIMEOUT"
+	envLogRetentionDays          = "LOG_RETENTION_DAYS"
+	envLogParseBatchSize         = "LOG_PARSE_BATCH_SIZE"
+	envServerPort                = "SERVER_PORT"
+	envPVStatusCodes             = "PV_STATUS_CODES"
+	envPVExcludePatterns         = "PV_EXCLUDE_PATTERNS"
+	envPVExcludeIPs              = "PV_EXCLUDE_IPS"
+	envDemoMode                  = "DEMO_MODE"
+	envAccessKeys                = "ACCESS_KEYS"
+	envAccessKeyExpireDays       = "ACCESS_KEY_EXPIRE_DAYS"
+	envLanguage                  = "APP_LANGUAGE"
+	envWebBasePath               = "WEB_BASE_PATH"
+	envMobilePWAEnabled          = "MOBILE_PWA_ENABLED"
+	envIPGeoCacheLimit           = "IP_GEO_CACHE_LIMIT"
+	envIPGeoAPIURL               = "IP_GEO_API_URL"
+	envDBDriver                  = "DB_DRIVER"
+	envDBDSN                     = "DB_DSN"
+	envDBMaxOpenConns            = "DB_MAX_OPEN_CONNS"
+	envDBMaxIdleConns            = "DB_MAX_IDLE_CONNS"
+	envDBConnMaxLifetime         = "DB_CONN_MAX_LIFETIME"
 )
 
 var (
@@ -52,18 +54,20 @@ var (
 		"atom.xml$",
 	}
 	defaultSystem = SystemConfig{
-		LogDestination:      "file",
-		TaskInterval:        "1m",
-		HTTPSourceTimeout:   "2m",
-		LogRetentionDays:    30,
-		ParseBatchSize:      100,
-		IPGeoCacheLimit:     1000000,
-		IPGeoAPIURL:         DefaultIPGeoAPIURL,
-		DemoMode:            false,
-		AccessKeys:          nil,
-		AccessKeyExpireDays: 7,
-		Language:            "zh-CN",
-		MobilePWAEnabled:    false,
+		LogDestination:            "file",
+		TaskInterval:              "1m",
+		BackfillMaxDurationPerRun: "8s",
+		BackfillMaxBytesPerRun:    DefaultBackfillMaxBytesPerRun,
+		HTTPSourceTimeout:         "2m",
+		LogRetentionDays:          30,
+		ParseBatchSize:            100,
+		IPGeoCacheLimit:           1000000,
+		IPGeoAPIURL:               DefaultIPGeoAPIURL,
+		DemoMode:                  false,
+		AccessKeys:                nil,
+		AccessKeyExpireDays:       7,
+		Language:                  "zh-CN",
+		MobilePWAEnabled:          false,
 	}
 	defaultServer = ServerConfig{
 		Port: ":8089",
@@ -154,6 +158,27 @@ func applyEnvOverrides(cfg *Config) error {
 
 	if raw, _ := getEnvValue(envTaskInterval); raw != "" {
 		cfg.System.TaskInterval = raw
+	}
+	if raw, key := getEnvValue(envBackfillMaxDurationPerRun); raw != "" {
+		trimmed := strings.TrimSpace(raw)
+		parsed, err := time.ParseDuration(trimmed)
+		if err != nil {
+			return fmt.Errorf("解析 %s 失败: %w", key, err)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("%s 必须大于0", key)
+		}
+		cfg.System.BackfillMaxDurationPerRun = trimmed
+	}
+	if raw, key := getEnvValue(envBackfillMaxBytesPerRun); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("解析 %s 失败: %w", key, err)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("%s 必须大于0", key)
+		}
+		cfg.System.BackfillMaxBytesPerRun = parsed
 	}
 	if raw, key := getEnvValue(envHTTPSourceTimeout); raw != "" {
 		trimmed := strings.TrimSpace(raw)
@@ -314,6 +339,14 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.System.TaskInterval == "" {
 		cfg.System.TaskInterval = defaultSystem.TaskInterval
+	}
+	if cfg.System.BackfillMaxDurationPerRun == "" {
+		cfg.System.BackfillMaxDurationPerRun = defaultSystem.BackfillMaxDurationPerRun
+	} else if parsed, err := time.ParseDuration(strings.TrimSpace(cfg.System.BackfillMaxDurationPerRun)); err != nil || parsed <= 0 {
+		cfg.System.BackfillMaxDurationPerRun = defaultSystem.BackfillMaxDurationPerRun
+	}
+	if cfg.System.BackfillMaxBytesPerRun <= 0 {
+		cfg.System.BackfillMaxBytesPerRun = defaultSystem.BackfillMaxBytesPerRun
 	}
 	if cfg.System.HTTPSourceTimeout == "" {
 		cfg.System.HTTPSourceTimeout = defaultSystem.HTTPSourceTimeout

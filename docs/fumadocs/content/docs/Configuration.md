@@ -359,6 +359,8 @@ log_format nginxpulse_trace '$remote_addr - $remote_user [$time_local] '
 ### system 系统配置
 - `logDestination`: `file` 或 `stdout`，默认 `file`。
 - `taskInterval`: 定期任务间隔，默认 `1m`，最小 5s。
+- `backfillMaxDurationPerRun`: 历史回填单轮最长时长（Go duration），默认 `8s`。单轮实际时长取 `taskInterval/3` 与该值中的较小值。
+- `backfillMaxBytesPerRun`: 历史回填单轮最大字节数，默认 `33554432`（32 MiB）。
 - `httpSourceTimeout`: 远程 HTTP 日志读取超时（Go duration），默认 `2m`，示例：`30s`、`2m`。
 - `logRetentionDays`: 保留天数，默认 30。仅作用于“已解析入库”的访问数据（明细/聚合/会话）；超过天数的数据会被定时清理。不会删除原始 Nginx 日志文件，也不影响系统运行日志文件的轮转。
 - `logRetentionDays` 生效说明：修改后需重启服务进程/容器，解析器才会按新值过滤入库日志。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/likaia/nginxpulse/internal/config"
 	"github.com/likaia/nginxpulse/internal/ingest"
 	"github.com/likaia/nginxpulse/internal/logging"
 	"github.com/sirupsen/logrus"
@@ -107,9 +108,9 @@ func backfillBudget(interval time.Duration) (time.Duration, int64) {
 	if duration < 500*time.Millisecond {
 		duration = 500 * time.Millisecond
 	}
-	if duration > 8*time.Second {
-		duration = 8 * time.Second
+	maxDuration := config.GetBackfillMaxDurationPerRun()
+	if duration > maxDuration {
+		duration = maxDuration
 	}
-	const maxBytes = int64(32 * 1024 * 1024)
-	return duration, maxBytes
+	return duration, config.GetBackfillMaxBytesPerRun()
 }
