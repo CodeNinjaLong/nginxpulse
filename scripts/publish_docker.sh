@@ -32,6 +32,9 @@ PUSH=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --)
+      shift
+      ;;
     -r|--repo)
       REPO="$2"
       shift 2
@@ -101,6 +104,7 @@ BUILD_ARGS=(
   --build-arg "VERSION=$VERSION"
 )
 MULTI_PLATFORM=false
+BUILDX_EXTRA_ARGS=()
 if [[ "$PLATFORMS" == *","* ]]; then
   MULTI_PLATFORM=true
 fi
@@ -116,18 +120,68 @@ fi
 echo "Commit:   $GIT_COMMIT"
 echo "Time:     $BUILD_TIME"
 
-if $PUSH; then
-  if docker buildx version >/dev/null 2>&1; then
-    if $MULTI_PLATFORM; then
-      ensure_container_buildx_builder
+split_and_push_multiarch() {
+  local selected_builder="$1"
+  local platform
+  local arch_suffix
+  local platform_tag
+  local pushed_refs=()
+  local per_platform_args=()
+
+  if [[ -n "$selected_builder" ]]; then
+    per_platform_args+=(--builder "$selected_builder")
+  fi
+
+  IFS=',' read -r -a platform_list <<< "$PLATFORMS"
+  for platform in "${platform_list[@]}"; do
+    platform="${platform//[[:space:]]/}"
+    if [[ -z "$platform" ]]; then
+      continue
     fi
+
+    arch_suffix="${platform#linux/}"
+    platform_tag="$REPO:$VERSION-$arch_suffix"
+
     docker buildx build \
-      --platform "$PLATFORMS" \
-      --push \
-      "${TAGS[@]}" \
+      "${per_platform_args[@]}" \
+      --platform "$platform" \
+      --load \
+      -t "$platform_tag" \
       "${BUILD_ARGS[@]}" \
       -f "$ROOT_DIR/Dockerfile" \
       "$ROOT_DIR"
+
+    docker push "$platform_tag"
+    pushed_refs+=("$platform_tag")
+  done
+
+  docker buildx imagetools create -t "$REPO:$VERSION" "${pushed_refs[@]}"
+  if $TAG_LATEST; then
+    docker buildx imagetools create -t "$REPO:latest" "${pushed_refs[@]}"
+  fi
+}
+
+if $PUSH; then
+  if docker buildx version >/dev/null 2>&1; then
+    SELECTED_BUILDER=""
+    if $MULTI_PLATFORM; then
+      SELECTED_BUILDER="$(ensure_container_buildx_builder "$PLATFORMS")"
+      BUILDX_EXTRA_ARGS+=(--builder "$SELECTED_BUILDER")
+    fi
+    check_docker_hub_connectivity
+    check_buildx_registry_access_from_dockerfile "$ROOT_DIR/Dockerfile"
+    if $MULTI_PLATFORM; then
+      split_and_push_multiarch "$SELECTED_BUILDER"
+    else
+      docker buildx build \
+        "${BUILDX_EXTRA_ARGS[@]}" \
+        --platform "$PLATFORMS" \
+        --push \
+        "${TAGS[@]}" \
+        "${BUILD_ARGS[@]}" \
+        -f "$ROOT_DIR/Dockerfile" \
+        "$ROOT_DIR"
+    fi
   else
     if [[ "$PLATFORMS" != "linux/amd64" ]]; then
       echo "Docker buildx is required for multi-arch builds." >&2
@@ -148,7 +202,10 @@ else
       echo "Multi-arch build without push is not supported. Use --push or set -p to a single platform." >&2
       exit 1
     fi
+    check_docker_hub_connectivity
+    check_buildx_registry_access_from_dockerfile "$ROOT_DIR/Dockerfile"
     docker buildx build \
+      "${BUILDX_EXTRA_ARGS[@]}" \
       --platform "$PLATFORMS" \
       --load \
       "${TAGS[@]}" \

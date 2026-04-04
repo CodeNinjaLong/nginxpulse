@@ -1,13 +1,27 @@
 FROM node:20-alpine AS webapp-builder
 
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ENV COREPACK_NPM_REGISTRY=${NPM_REGISTRY} \
+    npm_config_registry=${NPM_REGISTRY}
+
 WORKDIR /app
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 COPY webapp/package.json ./webapp/
 COPY webapp/pnpm-lock.yaml ./webapp/
 COPY webapp_mobile/package.json ./webapp_mobile/
 COPY webapp_mobile/pnpm-lock.yaml ./webapp_mobile/
-RUN cd webapp && pnpm install --frozen-lockfile
-RUN cd webapp_mobile && pnpm install --frozen-lockfile
+RUN set -eu; \
+    for attempt in 1 2 3; do \
+      cd /app/webapp && pnpm install --frozen-lockfile --registry="${NPM_REGISTRY}" && break; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep 2; \
+    done
+RUN set -eu; \
+    for attempt in 1 2 3; do \
+      cd /app/webapp_mobile && pnpm install --frozen-lockfile --registry="${NPM_REGISTRY}" && break; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep 2; \
+    done
 
 COPY webapp ./webapp
 COPY webapp_mobile ./webapp_mobile
@@ -16,9 +30,22 @@ RUN cd webapp_mobile && pnpm run build
 
 FROM golang:1.24.0-alpine AS backend-builder
 
+ARG GOPROXY_PRIMARY=https://proxy.golang.org,direct
+ARG GOPROXY_FALLBACK=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY_PRIMARY}
+
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN set -eu; \
+    if go env -w GOPROXY="${GOPROXY_PRIMARY}" && go mod download; then \
+      exit 0; \
+    fi; \
+    go env -w GOPROXY="${GOPROXY_FALLBACK}"; \
+    for attempt in 1 2 3; do \
+      go mod download && exit 0; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep 2; \
+    done
 
 COPY . .
 ARG TARGETOS
